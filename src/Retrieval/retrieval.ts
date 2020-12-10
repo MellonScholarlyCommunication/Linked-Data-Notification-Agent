@@ -54,13 +54,6 @@ function isRemote(path: string) {
   let remoteURL = true;
   try{ new URL(path) }
   catch (e) {remoteURL = false}
-
-  async function loadDataset (options:{path:string, contentType?: string, baseIRI?: string} ) {
-    const stream = createReadStream(options.path)
-    const parseStream = rdfParser.parse(stream, { path: options.path, contentType: options.contentType, baseIRI: options.baseIRI })
-    return factory.dataset().import(parseStream)
-  }
-
   return remoteURL
 }
 
@@ -115,9 +108,12 @@ export const RDFStreamToQuads = (stream : RDF.Stream) : Promise<RDF.Quad[]> => {
   })
 }
 
+export const getResourceAsDataset = async (auth: any, path: string, content_type?: string) => {
+  const quadStream = await getResourceAsRDFStream(auth, path, content_type)
+  return await getDataset(quadStream)
 
-export async function loadDataset (options:{path:string, contentType?: string, baseIRI?: string} ) {
-  const stream = createReadStream(options.path)
-  const parseStream = rdfParser.parse(stream, { path: options.path, contentType: options.contentType, baseIRI: options.baseIRI })
-  return factory.dataset().import(parseStream)
+}
+
+export const getDataset = async (quadStream: RDF.Stream) => {  
+  return await factory.dataset().import(quadStream)
 }

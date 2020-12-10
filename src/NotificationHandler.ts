@@ -8,8 +8,8 @@ import generateNotification from './Notifications/NotificationGenerator';
 import { UpdateTracker } from './AutoUpdates/UpdateTracker';
 import { setLogOptions, log, Level } from './Utils/Logger';
 import * as N3 from 'n3';
-import { validate } from './Utils/Validation';
-import { loadDataset } from './Retrieval/retrieval'
+import { validate } from './Validation/Validation';
+import { getResourceAsRDFStream, getDataset, getResourceAsDataset } from './Retrieval/retrieval';
 const streamifyArray = require('streamify-array');
 
 const INBOX_LINK_REL = ns.ldp('inbox')
@@ -130,23 +130,22 @@ export class NotificationHandler {
     const notifications : any[] = []
     for (let id of notificationIds) {
       const notificationQuads = await this.getNotification(id)
+      const notificationQuadStream = await streamifyArray(notificationQuads); // TODO:: THIS STREAM IS CONSUMED, optimise to only require streaming once?
+      const notificationDataset = await getDataset(notificationQuadStream)
       // Evaluate the callback over the notification quads, and return the results
       let validated = true;
-      const notificationQuadStream = await streamifyArray(notificationQuads);
       for (let shapeFile of params.filters || []) {
-        const shapeQuadStream = await loadDataset({ path: shapeFile, contentType: 'text/turtle'})  // TODO:: Dynamic content typing for shapes
-        if(!validate(notificationQuadStream, shapeQuadStream)) {
+        const shapeDataset = await getResourceAsDataset(this.auth, shapeFile)
+        if(!await validate(notificationDataset, shapeDataset)) {
           validated = false;
-          break;
         }
       }
       if(validated) {
         const result = await params.callBack(notificationQuads)
         notifications.push(result)
-        if (params.delete) deleteFile(this.auth, id);
+        if (params.delete) this.clearNotifications({notificationIds: [id]});
       }
     }
-    if (params.delete) this.clearNotifications({notificationIds})
     return await Promise.all(notifications)
   }
 

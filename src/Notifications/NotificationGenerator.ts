@@ -20,16 +20,16 @@ export default async function generateNotification(auth: any, config: Configurat
 
   // Add the from, to, cc and bcc fields 
   for (const id of senders || []) {
-    notificationQuads.push(df.quad(df.namedNode(BASEIRI), df.namedNode(ns.dct('creator')), df.namedNode(id)))
+    if (id) notificationQuads.push(df.quad(df.namedNode(BASEIRI), df.namedNode(ns.dct('creator')), df.namedNode(id)))
   }
   for (const id of notificationData.to || []) {
-    notificationQuads.push(df.quad(df.namedNode(BASEIRI), df.namedNode(ns.as('to')), df.namedNode(id)))
+    if (id) notificationQuads.push(df.quad(df.namedNode(BASEIRI), df.namedNode(ns.as('to')), df.namedNode(id)))
   }
   for (const id of notificationData.cc || []) {
-    notificationQuads.push(df.quad(df.namedNode(BASEIRI), df.namedNode(ns.as('cc')), df.namedNode(id)))
+    if (id) notificationQuads.push(df.quad(df.namedNode(BASEIRI), df.namedNode(ns.as('cc')), df.namedNode(id)))
   }
   for (const id of notificationData.bcc || []) {
-    notificationQuads.push(df.quad(df.namedNode(BASEIRI), df.namedNode(ns.as('bcc')), df.namedNode(id)))
+    if (id) notificationQuads.push(df.quad(df.namedNode(BASEIRI), df.namedNode(ns.as('bcc')), df.namedNode(id)))
   }
 
   const contentType = notificationData.contentTypeOutput
