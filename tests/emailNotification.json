@@ -1,0 +1,8 @@
+{
+  "@context": {"ex": "https://example.com"},
+  "summary": "Out of office reply",
+  "type": "Note",
+  "mediaType": "text/html",
+  "content": "Hi,<br>I am currently out of office until 31/12/2020.<br><br>Kind regards,<br><b>John Doe<b>"
+
+}

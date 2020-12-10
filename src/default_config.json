@@ -1,0 +1,7 @@
+{
+  "username": "login_username",
+  "password": "login-password",
+  "idp": "identity-provider",
+  "sender": "default-sender-webId",
+  "loginPopup": "https://solidcommunity.net/common/popup.html"
+}

@@ -1,0 +1,18 @@
+{
+  "@context": {"ex": "https://example.com"},
+  "summary": "Automated update notification of smartphone to pod environment",
+  "type": "Update",
+  "actor": {
+    "@id": "ex:Alice",
+    "type": "Person",
+    "name": "Alice"
+  },
+  "location": {    
+    "type": "Place",
+    "longitude": "{{longitude}}",
+    "latitude": "{{latitude}}",
+    "altitude": "{{altitude}}",
+    "units": "m"
+  },
+  "updated": "{{timestamp}}"
+}

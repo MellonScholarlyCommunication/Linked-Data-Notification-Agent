@@ -1,0 +1,15 @@
+{
+  "@context": {"ex": "https://example.com"},
+  "summary": "Alice arrived at the meeting",
+  "type": "Arrive",
+  "actor": {
+    "@id": "ex:Alice",
+    "type": "Person",
+    "name": "Alice"
+  },
+  "location": {
+    "type": "Place",
+    "name": "Meeting location",
+    "@id": "ex:AAtower"
+  }
+}

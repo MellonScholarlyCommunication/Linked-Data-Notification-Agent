@@ -1,0 +1,7 @@
+{
+  "username": "notificationtestpod",
+  "password": "notificationtestpod",
+  "idp": "https://solidcommunity.net",
+  "sender": "default_sender",
+  "loginPopup": "https://solidcommunity.net/common/popup.html"
+}
