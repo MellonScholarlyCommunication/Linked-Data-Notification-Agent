@@ -115,7 +115,7 @@ export class NotificationHandler {
     return this.processNotifications({callBack: f, ...params})
   }
 
-  public async processNotifications(params: {webId?: string, callBack: Function, format?: string, watch?: boolean, notificationIds?: [], filters?: any[]}) {
+  public async processNotifications(params: {webId?: string, callBack: Function, watch?: boolean, notificationIds?: [], filters?: any[]}) {
     if (params.watch) {
       return await this._processWatchNotifications(params);
     } else {
