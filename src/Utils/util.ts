@@ -104,6 +104,6 @@ export const quadsToString = (quads: RDF.Quad[], contentType?: string) : string 
  * @param {ReadableStream} body
  * @returns {NodeJS.ReadableStream}
  */
-function toNodeReadable(body: ReadableStream | null): NodeJS.ReadableStream {
+export function toReadableStream(body: ReadableStream | null): NodeJS.ReadableStream {
   return require('is-stream')(body) ? body : require('web-streams-node').toNodeReadable(body);
 }

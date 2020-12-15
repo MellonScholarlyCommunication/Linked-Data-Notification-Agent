@@ -8,7 +8,7 @@ import { isBrowser } from 'browser-or-node';
 import { fstat, readFileSync } from 'fs';
 import { Level, log } from './Logger';getFile
 import * as RDF from 'rdf-js';
-import { streamToQuads } from './util';
+import { streamToQuads, toReadableStream } from './util';
 import { rejects } from 'assert';
 const streamifyString = require('streamify-string');
 
@@ -116,7 +116,8 @@ export async function parseResponseToQuads(response: any): Promise<RDF.Quad[]> {
   try {
     return new Promise((resolve, reject) => {
       const quads : RDF.Quad[] = []
-      rdfParser.parse(response.body, { contentType: content_type })
+      const inputStream = toReadableStream(response.body)
+      rdfParser.parse(inputStream, { contentType: content_type })
       .on('data', (quad) => quads.push(quad))
       .on('error', (error) => reject(error))
       .on('end', () => resolve(quads))

@@ -130,7 +130,8 @@ export class NotificationHandler {
     const notifications : any[] = []
     for (let id of notificationIds) {
       const notificationQuads = await this.getNotification(id)
-      const notificationQuadStream = await streamifyArray(notificationQuads); // TODO:: THIS STREAM IS CONSUMED, optimise to only require streaming once?
+      // TODO:: THIS STREAM IS CONSUMED, optimise to only require streaming once?
+      const notificationQuadStream = await streamifyArray(notificationQuads.slice()); // Slicing is required, as else the array is consumed when running in the browser (but not when running in node?)
       const notificationDataset = await getDataset(notificationQuadStream)
       // Evaluate the callback over the notification quads, and return the results
       let validated = true;

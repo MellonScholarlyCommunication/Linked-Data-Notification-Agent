@@ -24,7 +24,6 @@ export class PollingTracker extends EventEmitter {
   }
 
   public async watch() : Promise<void> {
-    console.log('Polling')
     this.interval = setInterval(async () => {
       this.evaluate();
     }, this.timeOut);
