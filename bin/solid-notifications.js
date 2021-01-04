@@ -64,10 +64,7 @@ program
   .action(async (uri, flags) => {
     const nh = new NotificationHandler(mapFlags(program.opts()))
     await nh.login()
-    const options = {
-      webId: uri, 
-      filters:flags.filter
-    }
+    const options = { webId: uri, ...flags }
     await nh.clearNotifications(options)
   })
 
@@ -77,18 +74,13 @@ program
   .option('-f, --filter <filter...>', 'Only list notifications matching the given filters.')
   .option('-F, --format <format>', 'Format of the logged notifications. If no format is given, quads are returned joined by newlines.')
   .option('-D, --delete', 'Delete listed notifications upon retrieval.')
+  .option('-n, --notify', 'System notification')
   
-  .description('Send a notification to the inbox of the selected resource')
+  .description('List the notifications in the resource inbox')
   .action(async (uri, flags) => {
     const nh = new NotificationHandler(mapFlags(program.opts()))
     await nh.login()
-    const options = {
-      webId: uri, 
-      format: flags.format, 
-      delete: flags.delete, 
-      watch: flags.watch,
-      filters: flags.filter
-    }
+    const options = { webId: uri, ...flags }
     await nh.listNotifications(options)
   })
 

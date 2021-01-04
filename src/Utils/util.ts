@@ -35,6 +35,7 @@ export interface ConfigFileOptions {
   sender?: string,
   popup?: string,
   verbose?: boolean,
+  notify?: boolean,
   format?: string,
 }
 
@@ -47,6 +48,7 @@ export interface Configuration {
   popup?: string,
   cli?: boolean,
   verbose?: boolean,
+  notify?: boolean,
   format?: string,
   watch?: boolean,
   auth?: any,

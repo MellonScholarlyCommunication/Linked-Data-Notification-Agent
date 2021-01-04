@@ -4,15 +4,23 @@ export class Logger {
   public cli = false;
   private constructor() {}
 
-  public static get Instance()
-  {
-      // Do you need arguments? Make it a regular static method instead.
-      return this._instance || (this._instance = new this());
+
+  static getInstance(){
+    if(!Logger._instance) {
+      Logger._instance = new Logger();
+    }
+    return Logger._instance
   }
+  
+  // public static get Instance()
+  // {
+  //     // Do you need arguments? Make it a regular static method instead.
+  //     return this._instance || (this._instance = new this());
+  // }
 }
 
 export function log (level: Level, message: string) : void {
-  const logger = Logger.Instance;
+  const logger = Logger.getInstance();
   if (level === Level.CLI) {
     if(logger.cli || logger.verbose){
       console.log(message)
@@ -29,7 +37,7 @@ export function log (level: Level, message: string) : void {
 }
 
 export function setLogOptions (cli?: boolean, verbose?: boolean) {
-  const logger = Logger.Instance;
+  const logger = Logger.getInstance();
   if (cli) logger.cli = true;
   if (verbose) logger.verbose = true;
 }

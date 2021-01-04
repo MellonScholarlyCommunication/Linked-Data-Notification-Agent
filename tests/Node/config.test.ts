@@ -11,7 +11,8 @@ describe('Testing config file loading', () => {
     const config = JSON.parse(readFileSync(configPath, {encoding: 'utf-8'}))
 
     let handler = new NotificationHandler(config);
-    expect(handler.auth).to.be.undefined;
+    expect(!!handler.auth).to.not.be.null;
+    expect(!!handler.auth).to.not.be.undefined;
     expect(handler.config).to.deep.equal({
       "username": "notificationtestpod",
       "password": "notificationtestpod",

@@ -6,11 +6,12 @@ import { getFile, postFile, deleteFile, getQuadArrayFromFile, parseResponseToSto
 import * as RDF from 'rdf-js'
 import generateNotification from './Notifications/NotificationGenerator';
 import { UpdateTracker } from './AutoUpdates/UpdateTracker';
-import { setLogOptions, log, Level } from './Utils/Logger';
 import * as N3 from 'n3';
 import { validate } from './Validation/Validation';
 import { getResourceAsRDFStream, getDataset, getResourceAsDataset } from './Retrieval/retrieval';
+import * as winston from 'winston'
 const streamifyArray = require('streamify-array');
+const notifier = require('node-notifier');
 
 const INBOX_LINK_REL = ns.ldp('inbox')
 
@@ -23,7 +24,16 @@ export class NotificationHandler {
     this.config = config;
 
     // Set the Logger options based on the passed configuration
-    setLogOptions(!!this.config?.cli, !!this.config?.verbose)
+    if (this.config?.cli) {
+      // @ts-expect-error:
+      winston.level = "info"
+    } else if (this.config?.verbose) {
+      // @ts-expect-error:
+      winston.level = "verbose"
+    } else {
+      // @ts-expect-error:
+      winston.level = "warn"
+    }
     
     // Set the auth based on the environment
     this.auth = this.config.auth || isBrowser
@@ -31,7 +41,7 @@ export class NotificationHandler {
     : require('solid-auth-cli')
 
     // Log the config
-    log(Level.Log, 'config: ' + JSON.stringify(this.config, null, 2))
+    winston.log('verbose', 'config: ' + JSON.stringify(this.config, null, 2))
   }
 
   /**
@@ -73,7 +83,7 @@ export class NotificationHandler {
       }
 
     }
-    log(Level.Log, 'Notification sent succesfully')
+    winston.log('verbose', 'Notification sent succesfully')
     return results;
   }
 
@@ -85,13 +95,13 @@ export class NotificationHandler {
     for (let notificationId of notificationIds) {
       try {
         await deleteFile(this.auth, notificationId)
-        log(Level.Log, 'Deleted notification: ' + notificationId)
+        winston.log('verbose', 'Deleted notification: ' + notificationId)
       } catch (e) {
         failedDeletions.push({id: notificationId, error: e})
-        log(Level.Error, 'Failed to delete notification: ' + notificationId)
+        winston.log('error', 'Failed to delete notification: ' + notificationId)
       }
     }
-    log(Level.CLI, 'Finished clearing inbox')
+    winston.log('verbose', 'Finished clearing inbox')
     if (failedDeletions.length) {
       throw new SolidError(`Failed to remove notifications: ${failedDeletions.map(e => e.id).join(', ')}`)
     }
@@ -103,19 +113,19 @@ export class NotificationHandler {
    * @param format 
    * @param filter 
    */
-  public async listNotifications(params?: {webId?: string, format?: string, delete?:boolean, watch?: boolean, filters?: any[],  notificationIds?: [],}) {
+  public async listNotifications(params?: {webId?: string, format?: string, delete?:boolean, watch?: boolean, filters?: any[],  notificationIds?: [], notify?: boolean}) {
     const f = async (quads : RDF.Quad[]) => {
       const format = params?.format || this.config.format || 'text/turtle' // TODO:: maybe have a better way of formatting
       let notificationString;
       notificationString = await quadsToString(quads, format);
       const notificationText = `\nNotification:\n${notificationString}\n`
-      log(Level.CLI, notificationText)
+      winston.log('info', notificationText)
       return notificationString
     }
     return this.processNotifications({callBack: f, ...params})
   }
 
-  public async processNotifications(params: {webId?: string, callBack: Function, watch?: boolean, notificationIds?: [], filters?: any[]}) {
+  public async processNotifications(params: {webId?: string, callBack: Function, watch?: boolean, notificationIds?: [], filters?: any[], notify?: boolean}) {
     if (params.watch) {
       return await this._processWatchNotifications(params);
     } else {
@@ -123,7 +133,7 @@ export class NotificationHandler {
     }
   }
 
-  private async _processNotifications(params: {webId?: string, callBack: Function, delete?: boolean, watch?: boolean, notificationIds?: [], filters?: any[]}) {
+  private async _processNotifications(params: {webId?: string, callBack: Function, delete?: boolean, watch?: boolean, notificationIds?: [], filters?: any[], notify?: boolean}) {
     const webId = await this.getWebId(params);
     // Check if notifications are specified to be processed. If not, process over all notifications in the inbox.
     const notificationIds = params.notificationIds?.length ? params.notificationIds : (await this.getInbox(webId))?.notifications
@@ -144,13 +154,14 @@ export class NotificationHandler {
       if(validated) {
         const result = await params.callBack(notificationQuads)
         notifications.push(result)
+        if (params.notify) this.notifySystem(notificationQuads)
         if (params.delete) this.clearNotifications({notificationIds: [id]});
       }
     }
     return await Promise.all(notifications)
   }
 
-  private async _processWatchNotifications(params: {webId?: string, callBack: Function, delete?: boolean, watch?: boolean, notificationIds?: [], filters?: any[]}) {
+  private async _processWatchNotifications(params: {webId?: string, callBack: Function, delete?: boolean, watch?: boolean, notificationIds?: [], filters?: any[], notify?: boolean}) {
     const webId = await this.getWebId(params);
     const inbox = await this.discoverInbox(webId)
     
@@ -168,6 +179,7 @@ export class NotificationHandler {
       for (let notificationId of newNotificationsIds) {
         const quads = await getQuadArrayFromFile(this.auth, notificationId)
         params.callBack(quads);
+        if (params.notify) this.notifySystem(quads)
       }
       if (params.delete) this.clearNotifications({notificationIds: newNotificationsIds})
       processedIds = processedIds.concat(newNotificationsIds)
@@ -175,6 +187,29 @@ export class NotificationHandler {
     
     // Subscribe the tracker
     tracker.subscribe(inbox);
+  }
+  
+  private async notifySystem(quads: RDF.Quad[]) {
+    let sender = null;
+    let contents = null;
+
+    for (let quad of quads) {
+      if (quad.predicate.value === ns.dct('creator')) {
+        sender = quad.object.value;
+      }
+      if (quad.predicate.value === ns.as('content')) {
+        contents = quad.object.value;
+      } 
+    }
+    if (!contents) {
+      contents = await quadsToString(quads, 'text/turtle');
+    }
+    if (sender)
+    contents = `Sender: ${sender}\n` + contents
+    notifier.notify({
+      title: 'Solid notification',
+      message: contents
+    });
   }
   
 
