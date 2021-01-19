@@ -1,5 +1,6 @@
+import { isBrowser } from 'browser-or-node';
 import { EventEmitter } from 'events';
-const WebSocket = require('ws');
+import * as winston from 'winston'
 
 export class WebSocketTracker extends EventEmitter{
   auth: any;
@@ -20,8 +21,10 @@ export class WebSocketTracker extends EventEmitter{
   }
 
   private createWebSocket() : Promise<WebSocket> {
+    winston.log('verbose', 'creating websocket tracker for url: ' + this.socketURI)
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(this.url)
+      let Socket = isBrowser? WebSocket: require('ws')
+      const ws = new Socket(this.socketURI)
       ws.onopen = () => { resolve(ws) }
       ws.onerror = () => { reject() }
     })

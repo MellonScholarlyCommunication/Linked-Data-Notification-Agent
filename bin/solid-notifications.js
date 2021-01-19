@@ -92,9 +92,6 @@ program
         while (notification = notificationIterator.read())
           logNotification(notification, options.format)
       });
-      // for (let notification of Array.from(notificationIterator)) {
-      //   logNotification(notification, options.format)
-      // }  
     } else {
       const notificationIterator = await nh.fetchNotifications({...options}) // Iterator< { id: string, quads: RDF.Quad[] } >
       for (let notification of Array.from(notificationIterator)) {

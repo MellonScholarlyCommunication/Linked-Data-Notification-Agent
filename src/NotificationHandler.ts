@@ -1,14 +1,10 @@
-import ns from './NameSpaces';
+
 import { isBrowser, isNode } from "browser-or-node";
 import SolidError from './Utils/SolidError';
 import { LoginOptions, NotificationMetadata, NotificationHandlerOptions, Configuration, streamToQuads, quadsToString, InboxNotification, notifySystem } from './Utils/util';
 import { getFile, postFile, deleteFile, getQuadArrayFromFile, parseResponseToStore, getStoreFromFile, parseResponseToQuads } from './Utils/FileUtils';
-import * as RDF from 'rdf-js'
 import generateNotification from './Notifications/NotificationGenerator';
-import { validate } from './Validation/Validation';
-import { getResourceAsRDFStream, getDataset, getResourceAsDataset } from './Retrieval/retrieval';
 import * as winston from 'winston'
-import {AsyncIterator} from 'asynciterator'
 import { InboxRetrievalAsyncIterator } from './InboxIterators/InboxRetrievalAsyncIterator';
 import { discoverInbox, getInbox } from './Retrieval/inbox_retrieval';
 import getInboxIterator from './InboxIterators/InboxRetrievalIterator';
@@ -132,7 +128,6 @@ export class NotificationHandler {
     const webId = await this.getWebId(params);
     params.webId = webId  
     const inbox = await discoverInbox(this.auth, webId);
-    console.log('WATCHING')
     return new InboxRetrievalAsyncIterator(this.auth, inbox, params)
   }
 
