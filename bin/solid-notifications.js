@@ -1,6 +1,8 @@
 const { NotificationHandler } = require("../dist/index.js")
 const program = require('commander');
 const { readFileSync } = require("fs");
+const { option } = require("commander");
+const { quadsToString } = require("../dist/Utils/util.js");
 
 function mapFlags (options) {
   // Fetch the config file and merge with the passed options
@@ -81,7 +83,24 @@ program
     const nh = new NotificationHandler(mapFlags(program.opts()))
     await nh.login()
     const options = { webId: uri, ...flags }
-    await nh.listNotifications(options)
+
+    if (flags.watch) {
+      // Watch mode
+      const notificationIterator = await nh.watchNotifications({...options}) // Iterator< { id: string, quads: RDF.Quad[] } >
+      notificationIterator.on('readable', () => {
+        let notification;
+        while (notification = notificationIterator.read())
+          logNotification(notification, options.format)
+      });
+      // for (let notification of Array.from(notificationIterator)) {
+      //   logNotification(notification, options.format)
+      // }  
+    } else {
+      const notificationIterator = await nh.fetchNotifications({...options}) // Iterator< { id: string, quads: RDF.Quad[] } >
+      for (let notification of Array.from(notificationIterator)) {
+        logNotification(notification, options.format)
+      }  
+    }
   })
 
 program.parse(process.argv)
@@ -89,4 +108,15 @@ program.parse(process.argv)
 
 function fetchConfig(configPath) {
   return JSON.parse(readFileSync(configPath))
+}
+
+async function logNotification (notification, format) {
+  const quads = notification.quads
+  let notificationString;
+  format = format || "text/turtle"
+  notificationString = await quadsToString(quads, format);
+  const notificationText = `\nNotification:\n${notificationString}\n`
+  // winston.log('info', notificationText) -> refactor this to only show message?
+  console.log(notificationText)
+  return notificationString
 }

@@ -175,7 +175,7 @@ This feature is not available for the CLI.
 const agent = require('solid-notifications')
 const f = () => {}
 const options = { callback: f, ...}
-agent.processNotifications(options)
+agent.fetchNotifications(options)
 ```
 #### Options
 ```

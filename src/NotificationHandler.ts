@@ -1,19 +1,20 @@
 import ns from './NameSpaces';
 import { isBrowser, isNode } from "browser-or-node";
 import SolidError from './Utils/SolidError';
-import { LoginOptions, NotificationMetadata, NotificationHandlerOptions, Configuration, streamToQuads, quadsToString } from './Utils/util';
+import { LoginOptions, NotificationMetadata, NotificationHandlerOptions, Configuration, streamToQuads, quadsToString, InboxNotification, notifySystem } from './Utils/util';
 import { getFile, postFile, deleteFile, getQuadArrayFromFile, parseResponseToStore, getStoreFromFile, parseResponseToQuads } from './Utils/FileUtils';
 import * as RDF from 'rdf-js'
 import generateNotification from './Notifications/NotificationGenerator';
-import { UpdateTracker } from './AutoUpdates/UpdateTracker';
-import * as N3 from 'n3';
 import { validate } from './Validation/Validation';
 import { getResourceAsRDFStream, getDataset, getResourceAsDataset } from './Retrieval/retrieval';
 import * as winston from 'winston'
-const streamifyArray = require('streamify-array');
-const notifier = require('node-notifier');
+import {AsyncIterator} from 'asynciterator'
+import { InboxRetrievalAsyncIterator } from './InboxIterators/InboxRetrievalAsyncIterator';
+import { discoverInbox, getInbox } from './Retrieval/inbox_retrieval';
+import getInboxIterator from './InboxIterators/InboxRetrievalIterator';
 
-const INBOX_LINK_REL = ns.ldp('inbox')
+const streamifyArray = require('streamify-array');
+
 
 
 export class NotificationHandler {
@@ -23,17 +24,17 @@ export class NotificationHandler {
   constructor(config: NotificationHandlerOptions) {
     this.config = config;
 
+    let level = "info";
     // Set the Logger options based on the passed configuration
-    if (this.config?.cli) {
-      // @ts-expect-error:
-      winston.level = "info"
-    } else if (this.config?.verbose) {
-      // @ts-expect-error:
-      winston.level = "verbose"
+    if (this.config?.verbose) {
+      level = "verbose"
+    } else if (this.config?.cli) {
+      level = "info"
     } else {
-      // @ts-expect-error:
-      winston.level = "warn"
+      level = "warn"
     }
+
+    winston.add(new winston.transports.Console({level: level}))
     
     // Set the auth based on the environment
     this.auth = this.config.auth || isBrowser
@@ -55,14 +56,13 @@ export class NotificationHandler {
     
     // Create the notification from the given notification string / file / template and mappings
     const notification = await generateNotification(this.auth, this.config, notificationData);
-
     const results : any = {}
     const inboxMapping: {id: string, inbox: string}[] = []
     for (const receiverlist of [notificationData.to, notificationData.cc, notificationData.bcc]) {
       if (receiverlist){
         for (let receiver of receiverlist){
           try {
-            let inbox = await this.discoverInbox(receiver)
+            let inbox = await discoverInbox(this.auth, receiver)
             if (!inbox) throw new SolidError(`The inbox of ${receiver} could not be retrieved.\n`, 'Inbox discovery')
             else inboxMapping.push({ id: receiver, inbox: inbox })
           } catch (e) {
@@ -78,19 +78,32 @@ export class NotificationHandler {
       try {
         const response = await postFile(this.auth, inbox, notification, notificationData.contentTypeOutput, 'Notification posting')
         results[receiver] = response;
+        winston.log('verbose', 'Notification sent succesfully to inbox ' + inbox)
       } catch (e) {
         results[receiver] = new SolidError(`Error posting notification to inbox of ${receiver}.\n${e.message}`, e.name || 'Notification posting')
       }
 
     }
-    winston.log('verbose', 'Notification sent succesfully')
+    winston.log('verbose', 'All notifications sent')
     return results;
+  }
+
+  /**
+   * Check if passed parameters allow to create a notification, to catch errors early in the lifecycle
+   * @param notificationData 
+   */
+  private checkNotificationData(notificationData: NotificationMetadata) {
+    if (notificationData.to.length === 0) {
+      throw new SolidError('No receiver provided. Provide at least one receiver for the notification')
+    } else if (!(notificationData.notification || notificationData.notification_file || (notificationData.notification_template && notificationData.notification_mapping))) {
+      throw new SolidError('No notification provided. Provide either a notification object, a notification file, or a notification template file and mapping.')
+    }
   }
 
 
   public async clearNotifications(params: {webId?: string, notificationIds?: string[], filters?: any[]}) {
     const webId = await this.getWebId(params);
-    const notificationIds = params.notificationIds?.length ? params.notificationIds : (await this.getInbox(webId))?.notifications
+    const notificationIds = params.notificationIds?.length ? params.notificationIds : (await getInbox(this.auth, webId))?.notifications
     const failedDeletions = [];
     for (let notificationId of notificationIds) {
       try {
@@ -107,198 +120,21 @@ export class NotificationHandler {
     }
   }
 
-  /**
-   * 
-   * @param webId 
-   * @param format 
-   * @param filter 
-   */
-  public async listNotifications(params?: {webId?: string, format?: string, delete?:boolean, watch?: boolean, filters?: any[],  notificationIds?: [], notify?: boolean}) {
-    const f = async (quads : RDF.Quad[]) => {
-      const format = params?.format || this.config.format || 'text/turtle' // TODO:: maybe have a better way of formatting
-      let notificationString;
-      notificationString = await quadsToString(quads, format);
-      const notificationText = `\nNotification:\n${notificationString}\n`
-      winston.log('info', notificationText)
-      return notificationString
-    }
-    return this.processNotifications({callBack: f, ...params})
-  }
-
-  public async processNotifications(params: {webId?: string, callBack: Function, watch?: boolean, notificationIds?: [], filters?: any[], notify?: boolean}) {
-    if (params.watch) {
-      return await this._processWatchNotifications(params);
-    } else {
-      return await this._processNotifications(params);
-    }
-  }
-
-  private async _processNotifications(params: {webId?: string, callBack: Function, delete?: boolean, watch?: boolean, notificationIds?: [], filters?: any[], notify?: boolean}) {
+  public async fetchNotifications(params: {webId?: string, callBack: Function, systemNotificationFormat?: Function, notificationIds?: [], filters?: any[], notify?: boolean}) {
     const webId = await this.getWebId(params);
-    // Check if notifications are specified to be processed. If not, process over all notifications in the inbox.
-    const notificationIds = params.notificationIds?.length ? params.notificationIds : (await this.getInbox(webId))?.notifications
-    const notifications : any[] = []
-    for (let id of notificationIds) {
-      const notificationQuads = await this.getNotification(id)
-      // TODO:: THIS STREAM IS CONSUMED, optimise to only require streaming once?
-      const notificationQuadStream = await streamifyArray(notificationQuads.slice()); // Slicing is required, as else the array is consumed when running in the browser (but not when running in node?)
-      const notificationDataset = await getDataset(notificationQuadStream)
-      // Evaluate the callback over the notification quads, and return the results
-      let validated = true;
-      for (let shapeFile of params.filters || []) {
-        const shapeDataset = await getResourceAsDataset(this.auth, shapeFile)
-        if(!await validate(notificationDataset, shapeDataset)) {
-          validated = false;
-        }
-      }
-      if(validated) {
-        const result = await params.callBack(notificationQuads)
-        notifications.push(result)
-        if (params.notify) this.notifySystem(notificationQuads)
-        if (params.delete) this.clearNotifications({notificationIds: [id]});
-      }
-    }
-    return await Promise.all(notifications)
+    // Setting webId if none present to logged in user webId;
+    params.webId = webId  
+    const inbox = await discoverInbox(this.auth, webId);
+    return getInboxIterator(this.auth, this, inbox, params)
   }
 
-  private async _processWatchNotifications(params: {webId?: string, callBack: Function, delete?: boolean, watch?: boolean, notificationIds?: [], filters?: any[], notify?: boolean}) {
+  public async watchNotifications(params: {webId?: string, callBack: Function, systemNotificationFormat?: Function, notificationIds?: [], filters?: any[], notify?: boolean}) {
     const webId = await this.getWebId(params);
-    const inbox = await this.discoverInbox(webId)
-    
-    let processedIds : string[] = []
-
-    // Create the tracker
-    const tracker = new UpdateTracker(this.auth)
-    tracker.on('update', async (e) => {
-      // Inbox is updated
-      const inboxStore = await getStoreFromFile(this.auth, inbox);
-      const notificationIds = inboxStore.getQuads(inbox, ns.ldp('contains'), null, null).map(quad => quad.object.id)
-      // Get the new notification(s)
-      const newNotificationsIds = notificationIds.filter(id => processedIds.indexOf(id) === -1)
-      
-      for (let notificationId of newNotificationsIds) {
-        const quads = await getQuadArrayFromFile(this.auth, notificationId)
-        params.callBack(quads);
-        if (params.notify) this.notifySystem(quads)
-      }
-      if (params.delete) this.clearNotifications({notificationIds: newNotificationsIds})
-      processedIds = processedIds.concat(newNotificationsIds)
-    })
-    
-    // Subscribe the tracker
-    tracker.subscribe(inbox);
+    params.webId = webId  
+    const inbox = await discoverInbox(this.auth, webId);
+    console.log('WATCHING')
+    return new InboxRetrievalAsyncIterator(this.auth, inbox, params)
   }
-  
-  private async notifySystem(quads: RDF.Quad[]) {
-    let sender = null;
-    let contents = null;
-
-    for (let quad of quads) {
-      if (quad.predicate.value === ns.dct('creator')) {
-        sender = quad.object.value;
-      }
-      if (quad.predicate.value === ns.as('content')) {
-        contents = quad.object.value;
-      } 
-    }
-    if (!contents) {
-      contents = await quadsToString(quads, 'text/turtle');
-    }
-    if (sender)
-    contents = `Sender: ${sender}\n` + contents
-    notifier.notify({
-      title: 'Solid notification',
-      message: contents
-    });
-  }
-  
-
-  /**
-   * Check if passed parameters allow to create a notification, to catch errors early in the lifecycle
-   * @param notificationData 
-   */
-  private checkNotificationData(notificationData: NotificationMetadata) {
-    if (notificationData.to.length === 0) {
-      throw new SolidError('No receiver provided. Provide at least one receiver for the notification')
-    } else if (!(notificationData.notification || notificationData.notification_file || (notificationData.notification_template && notificationData.notification_mapping))) {
-      throw new SolidError('No notification provided. Provide either a notification object, a notification file, or a notification template file and mapping.')
-    }
-  }
-
-  /**
-   * This function discoveres the inbox associated with the webId, and returns the id of the inbox, as well as the notifications present.
-   * @param webId webId of the item to get the inbox from
-   */
-  private async getInbox(webId?: string, ...filters: any[]) {
-    if (!webId) {
-      const session = await this.auth.currentSession();
-      webId = session?.webId  
-    }
-    if (!webId) throw new SolidError("No inbox URI. Please maske sure a uri is passed or you are authenticated.", "Inbox retrieval")
-    const inbox = await this.discoverInbox(webId);
-    if (!inbox) throw new SolidError(`Could not find an inbox for resource ${webId}.`, "Inbox retrieval")
-    
-    const store = await getStoreFromFile(this.auth, inbox)
-    const notifications = await this.getNotificationIdsFromStore(store, inbox)
-    return {
-      id: inbox,
-      notifications
-    }
-  }
-
-  private async getNotificationIdsFromStore(store: N3.Store, inbox: string) {
-    const containsQuads = await store.getQuads(inbox, ns.ldp('contains'), null, null)
-    return containsQuads.map( (quad : N3.Quad) => quad.object.id)
-  }
-
-  private async getNotification(notificationId: string) : Promise<RDF.Quad[]> {
-    return getQuadArrayFromFile(this.auth, notificationId)
-  }
-
-
-  /**
-   * Resolves to the LDN Inbox URI for a given resource.
-   * @see https://www.w3.org/TR/ldn/#discovery
-   * @param uri {string} Resource uri
-   * @param webClient {SolidWebClient}
-   * @param [resource] {SolidResponse} Optional resource (passed in if you already
-   *   have requested the resource and have it handy). Saves making a GET request.
-   * @throws {Error} Rejects with an error if the resource has no inbox uri.
-   * @return {Promise<string>} Resolves to the inbox uri for the given resource
-   */
-  private async discoverInbox (uri: string): Promise<string> {
-    let response = await getFile(this.auth, uri, 'Inbox retrieval')
-    if (!response) throw new SolidError(`Could not retrieve inbox of ${uri}.`, 'Inbox retrieval');
-
-    // Check response headers for an inbox link
-    const inboxLinkRel = response.headers[INBOX_LINK_REL];
-    if (inboxLinkRel) return inboxLinkRel;
-    
-    const store = await parseResponseToStore(uri, response)
-    
-    // Retrieve inbox match from RDF store
-    const inboxMatches = store.getQuads(uri, ns.ldp('inbox'), null, null)
-    for (let match of inboxMatches) {
-      if (match.object.termType === "NamedNode")
-        return match.object.id
-    }
-    // No perfect match was found
-    throw new SolidError(`Could not retrieve inbox of ${uri}.`, 'Inbox retrieval');
-  }
-
-  private async getWebId(params: any) : Promise<string> {
-    let webId = params.webId
-    if (!webId) {
-      const session = await this.auth?.currentSession()
-      webId = session?.webId;
-    }
-    if (!webId) { throw new SolidError('Please authenticate yourself.')}
-    return webId
-  }
-
-
-
-
 
   // Forwarded from login of auth, this concern should maybe be separated to somewhere else, or require an auth to be passed that has been authenticated already?;
   public async login(loginOpts?: LoginOptions) {
@@ -352,6 +188,18 @@ export class NotificationHandler {
       throw new SolidError('No login popup uri. Please pass a popup uri via the config file or or in the parameter of the loginPopup function.', 'LoginError')
     }
   }
+
+
+  private async getWebId(params: any) : Promise<string> {
+    let webId = params.webId
+    if (!webId) {
+      const session = await this.auth?.currentSession()
+      webId = session?.webId;
+    }
+    if (!webId) { throw new SolidError('Please authenticate yourself.')}
+    return webId
+  }
+
 
   public async logout () {
     this.auth?.logout();

@@ -5,6 +5,7 @@ import * as jsonld from 'jsonld'
 import { Stream } from "stream";
 import * as RDF from 'rdf-js';
 import rdfSerializer from 'rdf-serialize';
+import { SystemNotificationHander } from '../SystemNotifications/SystemNotificationhandler';
 
 const streamifyArray = require('streamify-array');
 const streamifyString = require('streamify-string');
@@ -78,8 +79,7 @@ export interface NotificationMetadata {
 }
 
 
-export const parseFile = (filePath: string): any => {
-}
+export interface InboxNotification {id: string; quads:RDF.Quad[]}
 
 export const streamToQuads = (stream : RDF.Stream) : Promise<RDF.Quad[]> => {
   return new Promise((resolve, reject) => { 
@@ -108,4 +108,41 @@ export const quadsToString = (quads: RDF.Quad[], contentType?: string) : string 
  */
 export function toReadableStream(body: ReadableStream | null): NodeJS.ReadableStream {
   return require('is-stream')(body) ? body : require('web-streams-node').toNodeReadable(body);
+}
+
+
+/**
+ * Send system notifications for both node and browser
+ * @param quads The notification quads
+ * @param formattingFunction A formatting function to format the quads into a notification
+ */
+export async function notifySystem(quads: RDF.Quad[], formattingFunction?: Function) {
+  const f = async function (quads: RDF.Quad[]) {
+    let sender = null;
+    let contents = null;
+
+    for (let quad of quads) {
+      if (quad.predicate.value === ns.dct('creator')) {
+        sender = quad.object.value;
+      }
+      if (quad.predicate.value === ns.as('content')) {
+        contents = quad.object.value;
+      } 
+    }
+    
+    if (!contents) {
+      contents = await quadsToString(quads, 'text/turtle');
+    }
+    if (sender) {
+      contents = `Sender: ${sender}\n` + contents
+    }
+    return contents
+  }
+  
+  const message = formattingFunction ? await formattingFunction(quads) : await f(quads)
+
+  new SystemNotificationHander().notify({
+    title: 'Solid notification',
+    message,
+  });
 }

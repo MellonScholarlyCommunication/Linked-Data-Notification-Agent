@@ -6,10 +6,10 @@ import { storeStream } from 'rdf-store-stream';
 import { createFetchError } from './SolidError';
 import { isBrowser } from 'browser-or-node';
 import { fstat, readFileSync } from 'fs';
-import { Level, log } from './Logger';getFile
 import * as RDF from 'rdf-js';
 import { streamToQuads, toReadableStream } from './util';
 import { rejects } from 'assert';
+import winston from 'winston';
 const streamifyString = require('streamify-string');
 
 const INBOX_LINK_REL = ns.ldp('inbox')
@@ -35,7 +35,7 @@ export async function loadResourceText(auth: any, path: string) : Promise<string
 }
 
 export async function getFile(auth: any, uri: string, operationName?: string) {
-  log(Level.Log, 'getting ' + uri)
+  winston.log('verbose', 'getting ' + uri)
   const headers =  { Link: "<meta.rdf>;rel=" + INBOX_LINK_REL }
   const response = await fetch(auth, uri, {
     method: 'GET',
@@ -51,7 +51,7 @@ export async function getFile(auth: any, uri: string, operationName?: string) {
 }
 
 export async function postFile(auth: any, uri: string, body: string, contentType: string, operationName?: string) {
-  log(Level.Log, 'posting ' + uri + 'with' + body)
+  winston.log('verbose', 'posting ' + uri + 'with' + body)
   const headers =  { 'Content-Type': contentType }
   const response = await fetch(auth, uri, {
     method: 'POST',
@@ -68,7 +68,7 @@ export async function postFile(auth: any, uri: string, body: string, contentType
 }
 
 export async function deleteFile(auth: any, uri: string, operationName?: string) {
-  log(Level.Log, 'deleting ' + uri)
+  winston.log('verbose', 'deleting ' + uri)
   const response = await fetch(auth, uri, {
     method: 'DELETE',
   },
