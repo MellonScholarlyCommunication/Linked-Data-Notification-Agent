@@ -41,7 +41,7 @@
     "ws": "^7.4.1"
   },
   "bin": {
-    "solid-notifications": "dist/commander.js"
+    "solid-notifications": "bin/solid-notifications.js"
   },
   "scripts": {
     "test": "npm run test:node",
