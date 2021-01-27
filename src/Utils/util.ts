@@ -1,8 +1,6 @@
-import { readFileSync } from "fs";
+
 import SolidError from './SolidError';
 import ns from '../NameSpaces';
-import * as jsonld from 'jsonld'
-import { Stream } from "stream";
 import * as RDF from 'rdf-js';
 import rdfSerializer from 'rdf-serialize';
 import { SystemNotificationHander } from '../SystemNotifications/SystemNotificationhandler';

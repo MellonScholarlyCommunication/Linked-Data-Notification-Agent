@@ -3,10 +3,10 @@ The solution for notifications in a LDP environment.
 
 ## Installation
 This library can be installed using the following command:
-``` npm install solid-notifications ```
+``` npm install @dexagod/ldn-agent ```
 
 If the command line interface is required, it must be installed globally:
-``` npm install -g solid-notifications ```
+``` npm install -g @dexagod/ldn-agent ```
 <!-- Deze benaming is nog niet finaal! -->
 
 ## Usage
@@ -23,7 +23,7 @@ node bin/solid-notifications.js [options] <command>
 
 ### Javascript
 ```
-const NotificationAgent = require('solid-notifications')
+const NotificationAgent = require('@dexagod/ldn-agent')
 ```
 
 ## Configuration
@@ -38,7 +38,7 @@ solid-notifications -c config.json <command>
 
 ### Javascript
 ```
-const NotificationAgent = require('solid-notifications')
+const NotificationAgent = require('@dexagod/ldn-agent')
 const config = {...}
 const agent = new NotificationAgent(config)
 ```
@@ -66,7 +66,7 @@ Authentication will automatically be attempted for commands requiring authentica
 ### Javascript
 The login information can be passed using the configuration file, or in the options of the login function.
 ```
-const NotificationAgent = require('solid-notifications')
+const NotificationAgent = require('@dexagod/ldn-agent')
 const agent = new NotificationAgent(config)
 
 // Node && Browser
@@ -103,7 +103,7 @@ solid-notifications [options] send [send-options] <receiver> <notification>
 ```
 #### Javascript
 ```
-const agent = require('solid-notifications')
+const agent = require('@dexagod/ldn-agent')
 const options = {...}
 agent.sendNotification(options)
 ```
@@ -123,21 +123,28 @@ agent.sendNotification(options)
 The CLI interface handles the passed notification as a file if the ```-f``` flag is passed.
 All the option flags can be found here:
 ```
-  solid-notifications.js send --help
+  solid-notifications send --help
 ```
 
 
-#### Retrieving inbox
+#### Fetching inbox
 If no url is given, it will default to the inbox of the currently authenticated user.
+An iterator is returned containing the notifications present in the inbox.
+In the case watch mode is set on the CLI, or the watch function is called in javascript, the inbox will be continuously monitored by the agent using a polling or websocket approach for new notifications. 
+In javascript, this will return an asynciterator.
+
 #### CLI
 ```
 solid-notifications [options] list [list-options] [url]
 ```
 #### Javascript
 ```
-const agent = require('solid-notifications')
+const agent = require('@dexagod/ldn-agent')
 const options = {...}
-agent.listNotifications(options)
+// One time fetching of all notifications
+const iterator = agent.listNotifications(options)
+// watching the inbox continuously
+const asynciterator = agent.watchNotifications(options)
 ```
 #### Options
 ```
@@ -152,45 +159,9 @@ agent.listNotifications(options)
 ```
 All the CLI option flags can be found here:
 ```
-solid-notifications.js list --help
+solid-notifications list --help
 ```
 
-
-
-#### Processing inbox
-If no url is given, it will default to the inbox of the currently authenticated user.
-The processing is handled via a passed callback function.
-The callback is called for all notifications matching the filters. 
-The callback is provided with the quads of the notification.
-An example callback function:
-```
-const f = (quads: RDF.Quads) => { console.log(quads) }
-```
-
-#### CLI
-This feature is not available for the CLI.
-
-#### Javascript
-```
-const agent = require('solid-notifications')
-const f = () => {}
-const options = { callback: f, ...}
-agent.fetchNotifications(options)
-```
-#### Options
-```
-{
-  callBack: Function              // The callback function
-  webId?: string,                 // The resource of which the inbox is used.
-  delete?:boolean,                // Notifications are deleted after listing
-  watch?: boolean,                // Watch mode
-  filters?: any[],                // SAHCL shape files on which the notifications are evaluated
-}
-```
-All the CLI option flags can be found here:
-```
-solid-notifications.js list --help
-```
 
 
 
@@ -202,7 +173,7 @@ If no url is given, it will default to the inbox of the currently authenticated 
 ```
 #### Javascript
 ```
-const agent = require('solid-notifications')
+const agent = require('@dexagod/ldn-agent')
 const options = { ...}
 agent.clearNotifications(options)
 ```
@@ -214,7 +185,7 @@ agent.clearNotifications(options)
 ```
 All the CLI option flags can be found here:
 ```
-solid-notifications.js clear --help
+solid-notifications clear --help
 ```
 
 

@@ -11,7 +11,6 @@ const streamifyString = require('streamify-string');
 const BASEIRI = "urn:Notification"
 
 export default async function generateNotification(auth: any, config: Configuration, notificationData: NotificationMetadata) : Promise<string> {  
-
   // Extract and parse the notification body
   let notificationQuads = await parseNotificationBody(auth, notificationData); 
 

@@ -4,6 +4,12 @@ import { UpdateTracker } from '../AutoUpdates/UpdateTracker';
 import { deleteFile, getQuadArrayFromFile, getStoreFromFile } from "../Utils/FileUtils";
 import ns from '../NameSpaces';
 import winston from "winston";
+import { getResourceAsDataset, getDataset } from '../Retrieval/retrieval';
+import { validate } from "../Validation/Validation";
+import { notifySystem } from "../Utils/util";
+
+
+const streamifyArray = require('streamify-array');
 
 // specify return type
 interface InboxNotification {id: string; quads:RDF.Quad[]}
@@ -11,14 +17,13 @@ interface InboxNotification {id: string; quads:RDF.Quad[]}
 export class InboxRetrievalAsyncIterator extends AsyncIterator<InboxNotification> {
 
   public values: InboxNotification[];
-
-  deleteProcessed?: boolean;
-  uri: string;
-  auth: any;
-  constructor(auth: any, inbox: string, params: {webId?: string, callBack: Function, systemNotificationFormat?: Function, watch?: boolean, delete?: boolean, notificationIds?: [], filters?: any[], notify?: boolean}) {
+  private params: {webId?: string, inbox: string, systemNotificationFormat?: Function, watch?: boolean, delete?: boolean, notificationIds?: [], filters?: any[], notify?: boolean};
+  private auth: any;
+  
+  constructor(auth: any, params: {webId?: string, inbox: string, systemNotificationFormat?: Function, watch?: boolean, delete?: boolean, notificationIds?: [], filters?: any[], notify?: boolean}) {
     super();
-    this.uri = inbox;
-    this.deleteProcessed = params.delete;
+    this.params = params;
+
     this.auth = auth;
     this.values = new Array();
 
@@ -37,28 +42,50 @@ export class InboxRetrievalAsyncIterator extends AsyncIterator<InboxNotification
     const tracker = new UpdateTracker(this.auth)
     tracker.on('update', async (e) => {
       // Inbox is updated
-      const inboxStore = await getStoreFromFile(this.auth, this.uri);
-      const contentIds = inboxStore.getQuads(this.uri, ns.ldp('contains'), null, null).map(quad => quad.object.id)
+      const inboxStore = await getStoreFromFile(this.auth, this.params.inbox);
+      const contentIds = inboxStore.getQuads(this.params.inbox, ns.ldp('contains'), null, null).map(quad => quad.object.id)
       // Get the new notification(s)
       const newContentIds = contentIds.filter(id => processedIds.indexOf(id) === -1)
 
-      for (let contentId of newContentIds) {
-        const quads = await getQuadArrayFromFile(this.auth, contentId)
-        this.values.push( { id: contentId, quads } );
-        if (this.deleteProcessed) {
-          try {
-            await deleteFile(this.auth, contentId)
-            winston.log('verbose', 'Deleted: ' + contentId)
-          } catch (e) {
-            winston.log('error', 'Failed to delete: ' + contentId)
+
+      for (let notificationId of newContentIds) {
+        const quads = await getQuadArrayFromFile(this.auth, notificationId)
+
+        const notificationQuadStream = await streamifyArray(quads.slice()); // Slicing is required, as else the array is consumed when running in the browser (but not when running in node?)
+        const notificationDataset = await getDataset(notificationQuadStream)
+
+          
+        let validated = true;
+        for (let shapeFile of this.params.filters || []) {
+          const shapeDataset = await getResourceAsDataset(this.auth, shapeFile)
+          if(!await validate(notificationDataset, shapeDataset)) {
+            validated = false;
+          }
+        }
+
+        if(validated) {
+          this.values.push( {id: notificationId, quads: quads.slice()} );
+
+          // Handle flags
+          if (this.params.notify) {
+            notifySystem(quads, this.params.systemNotificationFormat)
+          }
+          if (this.params.delete) {
+            try {
+              await deleteFile(this.auth, notificationId)
+              winston.log('verbose', 'Deleted notification: ' + notificationId)
+            } catch (e) {
+              winston.log('error', 'Failed to delete notification: ' + notificationId)
+            }
           }
         }
       }
+
       processedIds = processedIds.concat(newContentIds)
       this.emit('readable')
     })
     // Subscribe the tracker
-    tracker.subscribe(this.uri);
+    tracker.subscribe(this.params.inbox);
   }
 
 }

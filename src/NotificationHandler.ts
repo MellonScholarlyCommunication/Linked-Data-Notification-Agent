@@ -116,19 +116,24 @@ export class NotificationHandler {
     }
   }
 
-  public async fetchNotifications(params: {webId?: string, callBack: Function, systemNotificationFormat?: Function, notificationIds?: [], filters?: any[], notify?: boolean}) {
-    const webId = await this.getWebId(params);
-    // Setting webId if none present to logged in user webId;
-    params.webId = webId  
-    const inbox = await discoverInbox(this.auth, webId);
-    return getInboxIterator(this.auth, this, inbox, params)
+  public async fetchNotifications(params: {webId?: string, inbox?: string, systemNotificationFormat?: Function, notificationIds?: [], filters?: any[], notify?: boolean}) {
+    if (!params.inbox) {
+      const webId = await this.getWebId(params);
+      // Setting webId if none present to logged in user webId;
+      params.webId = webId  
+      params.inbox = await discoverInbox(this.auth, webId);
+    }
+    return getInboxIterator(this.auth, params as any) // temp fix, inbox is not optional anymore but type checker does not see inbox is set.
   }
 
-  public async watchNotifications(params: {webId?: string, callBack: Function, systemNotificationFormat?: Function, notificationIds?: [], filters?: any[], notify?: boolean}) {
-    const webId = await this.getWebId(params);
-    params.webId = webId  
-    const inbox = await discoverInbox(this.auth, webId);
-    return new InboxRetrievalAsyncIterator(this.auth, inbox, params)
+  public async watchNotifications(params: {webId?: string, inbox?: string, systemNotificationFormat?: Function, notificationIds?: [], filters?: any[], notify?: boolean}) {
+    if (!params.inbox) {
+      const webId = await this.getWebId(params);
+      // Setting webId if none present to logged in user webId;
+      params.webId = webId  
+      params.inbox = await discoverInbox(this.auth, webId);
+    }
+    return new InboxRetrievalAsyncIterator(this.auth, params as any) // temp fix, inbox is not optional anymore but type checker does not see inbox is set.
   }
 
   // Forwarded from login of auth, this concern should maybe be separated to somewhere else, or require an auth to be passed that has been authenticated already?;

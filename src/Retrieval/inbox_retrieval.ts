@@ -16,6 +16,10 @@ export async function getInbox(auth: any, webId?: string) {
   const inbox = await discoverInbox(auth, webId);
   if (!inbox) throw new SolidError(`Could not find an inbox for resource ${webId}.`, "Inbox retrieval")
   
+  return fetchInboxNotifications(auth, inbox)
+}
+
+export async function fetchInboxNotifications(auth: any, inbox: string) {
   const store = await getStoreFromFile(auth, inbox)
   const notifications = await getNotificationIdsFromStore(store, inbox)
   return {
@@ -23,7 +27,6 @@ export async function getInbox(auth: any, webId?: string) {
     notifications
   }
 }
-
 
 /**
  * Resolves to the LDN Inbox URI for a given resource.
