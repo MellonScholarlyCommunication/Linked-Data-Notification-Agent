@@ -1,7 +1,7 @@
 
 import { isBrowser, isNode } from "browser-or-node";
 import SolidError from './Utils/SolidError';
-import { LoginOptions, NotificationMetadata, NotificationHandlerOptions, Configuration, streamToQuads, quadsToString, InboxNotification, notifySystem } from './Utils/util';
+import { LoginOptions, NotificationMetadata, NotificationHandlerOptions, Configuration, streamToQuads, quadsToString, InboxNotification, notifySystem, Filter } from './Utils/util';
 import { getFile, postFile, deleteFile, getQuadArrayFromFile, parseResponseToStore, getStoreFromFile, parseResponseToQuads } from './Utils/FileUtils';
 import generateNotification from './Notifications/NotificationGenerator';
 import * as winston from 'winston'
@@ -10,6 +10,8 @@ import { discoverInbox, getInbox } from './Retrieval/inbox_retrieval';
 import getInboxIterator from './InboxIterators/InboxRetrievalIterator';
 
 const streamifyArray = require('streamify-array');
+
+
 
 
 
@@ -62,7 +64,7 @@ export class NotificationHandler {
             if (!inbox) throw new SolidError(`The inbox of ${receiver} could not be retrieved.\n`, 'Inbox discovery')
             else inboxMapping.push({ id: receiver, inbox: inbox })
           } catch (e) {
-            results[receiver] = new SolidError(`The inbox of ${receiver} could not be retrieved.\n${e.message}`, e.name || 'Inbox discovery error')
+            throw new SolidError(`The inbox of ${receiver} could not be retrieved.\n${e.message}`, e.name || 'Inbox discovery error')
           }
         }
       }      
@@ -74,7 +76,7 @@ export class NotificationHandler {
       try {
         const response = await postFile(this.auth, inbox, notification, notificationData.contentTypeOutput, 'Notification posting')
         results[receiver] = response;
-        winston.log('verbose', 'Notification sent succesfully to inbox ' + inbox)
+        winston.log('verbose', 'Notification sent successfully to inbox ' + inbox)
       } catch (e) {
         results[receiver] = new SolidError(`Error posting notification to inbox of ${receiver}.\n${e.message}`, e.name || 'Notification posting')
       }
@@ -97,7 +99,7 @@ export class NotificationHandler {
   }
 
 
-  public async clearNotifications(params: {webId?: string, notificationIds?: string[], filters?: any[]}) {
+  public async clearNotifications(params: {webId?: string, notificationIds?: string[], filters?: Filter[]}) {
     const webId = await this.getWebId(params);
     const notificationIds = params.notificationIds?.length ? params.notificationIds : (await getInbox(this.auth, webId))?.notifications
     const failedDeletions = [];
@@ -116,7 +118,7 @@ export class NotificationHandler {
     }
   }
 
-  public async fetchNotifications(params: {webId?: string, inbox?: string, systemNotificationFormat?: Function, notificationIds?: [], filters?: any[], notify?: boolean}) {
+  public async fetchNotifications(params: {webId?: string, inbox?: string, systemNotificationFormat?: Function, notificationIds?: [], filters?: Filter[], notify?: boolean}) {
     if (!params.inbox) {
       const webId = await this.getWebId(params);
       // Setting webId if none present to logged in user webId;
@@ -126,7 +128,7 @@ export class NotificationHandler {
     return getInboxIterator(this.auth, params as any) // temp fix, inbox is not optional anymore but type checker does not see inbox is set.
   }
 
-  public async watchNotifications(params: {webId?: string, inbox?: string, systemNotificationFormat?: Function, notificationIds?: [], filters?: any[], notify?: boolean}) {
+  public async watchNotifications(params: {webId?: string, inbox?: string, systemNotificationFormat?: Function, notificationIds?: [], filters?: Filter[], notify?: boolean}) {
     if (!params.inbox) {
       const webId = await this.getWebId(params);
       // Setting webId if none present to logged in user webId;

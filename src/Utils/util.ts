@@ -9,6 +9,8 @@ const streamifyArray = require('streamify-array');
 const streamifyString = require('streamify-string');
 const stringifyStream = require('stream-to-string');
 
+export const DEFAULTFILTERNAME = 'default'
+
 export interface LoginOptions {
   username?: string;
   password?: string;
@@ -73,11 +75,16 @@ export interface NotificationMetadata {
   notification_template?: any,
   notification_mapping?: any,
   notification_file?: any,
+}
 
+export interface Filter {
+  name: string,
+  shape?: string,
+  shapeFileURI?: string,
 }
 
 
-export interface InboxNotification {id: string; quads:RDF.Quad[]}
+export interface InboxNotification {id: string; quads: RDF.Quad[]; filterName: string}
 
 export const streamToQuads = (stream : RDF.Stream) : Promise<RDF.Quad[]> => {
   return new Promise((resolve, reject) => { 
@@ -114,7 +121,7 @@ export function toReadableStream(body: ReadableStream | null): NodeJS.ReadableSt
  * @param quads The notification quads
  * @param formattingFunction A formatting function to format the quads into a notification
  */
-export async function notifySystem(quads: RDF.Quad[], formattingFunction?: Function) {
+export async function notifySystem(quads: RDF.Quad[], formattingFunction?: Function, filterName?: string) {
   const f = async function (quads: RDF.Quad[]) {
     let sender = null;
     let contents = null;
@@ -130,6 +137,9 @@ export async function notifySystem(quads: RDF.Quad[], formattingFunction?: Funct
     
     if (!contents) {
       contents = await quadsToString(quads, 'text/turtle');
+    }
+    if (filterName) {
+      contents = `Filter: ${filterName}\n` + contents
     }
     if (sender) {
       contents = `Sender: ${sender}\n` + contents

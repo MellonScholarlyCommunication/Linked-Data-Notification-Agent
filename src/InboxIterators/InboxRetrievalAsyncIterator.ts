@@ -6,21 +6,18 @@ import ns from '../NameSpaces';
 import winston from "winston";
 import { getResourceAsDataset, getDataset } from '../Retrieval/retrieval';
 import { validate } from "../Validation/Validation";
-import { notifySystem } from "../Utils/util";
+import { notifySystem, Filter, DEFAULTFILTERNAME, InboxNotification } from '../Utils/util';
 
 
 const streamifyArray = require('streamify-array');
 
-// specify return type
-interface InboxNotification {id: string; quads:RDF.Quad[]}
-
 export class InboxRetrievalAsyncIterator extends AsyncIterator<InboxNotification> {
 
   public values: InboxNotification[];
-  private params: {webId?: string, inbox: string, systemNotificationFormat?: Function, watch?: boolean, delete?: boolean, notificationIds?: [], filters?: any[], notify?: boolean};
+  private params: {webId?: string, inbox: string, systemNotificationFormat?: Function, watch?: boolean, delete?: boolean, notificationIds?: [], filters?: Filter[], notify?: boolean};
   private auth: any;
   
-  constructor(auth: any, params: {webId?: string, inbox: string, systemNotificationFormat?: Function, watch?: boolean, delete?: boolean, notificationIds?: [], filters?: any[], notify?: boolean}) {
+  constructor(auth: any, params: {webId?: string, inbox: string, systemNotificationFormat?: Function, watch?: boolean, delete?: boolean, notificationIds?: [], filters?: Filter[], notify?: boolean}) {
     super();
     this.params = params;
 
@@ -50,42 +47,48 @@ export class InboxRetrievalAsyncIterator extends AsyncIterator<InboxNotification
 
       for (let notificationId of newContentIds) {
         const quads = await getQuadArrayFromFile(this.auth, notificationId)
-
-        const notificationQuadStream = await streamifyArray(quads.slice()); // Slicing is required, as else the array is consumed when running in the browser (but not when running in node?)
-        const notificationDataset = await getDataset(notificationQuadStream)
-
           
-        let validated = true;
-        for (let shapeFile of this.params.filters || []) {
-          const shapeDataset = await getResourceAsDataset(this.auth, shapeFile)
-          if(!await validate(notificationDataset, shapeDataset)) {
-            validated = false;
-          }
-        }
-
-        if(validated) {
-          this.values.push( {id: notificationId, quads: quads.slice()} );
-
-          // Handle flags
-          if (this.params.notify) {
-            notifySystem(quads, this.params.systemNotificationFormat)
-          }
-          if (this.params.delete) {
-            try {
-              await deleteFile(this.auth, notificationId)
-              winston.log('verbose', 'Deleted notification: ' + notificationId)
-            } catch (e) {
-              winston.log('error', 'Failed to delete notification: ' + notificationId)
+        if (!this.params.filters || this.params.filters.length === 0) {
+          this.validatedNotification(notificationId, quads, DEFAULTFILTERNAME)   
+        } else {
+          for (let filter of this.params.filters) {
+            if (!filter.name) throw new Error('No name parameter set for used filter.')
+            if (filter.shape) throw new Error('Shapes are currently not yet supported.')
+            if (!filter.shapeFileURI) throw new Error('No shapeFileURI parameter set for filter.')
+  
+            // These have to be done every time, as the stream is consumed. (Is the dataset consumed? TODO:: check)
+            const shapeDataset = await getResourceAsDataset(this.auth, filter.shapeFileURI)
+            const notificationQuadStream = await streamifyArray(quads.slice()); // Slicing is required, as else the array is consumed when running in the browser (but not when running in node?)
+            const notificationDataset = await getDataset(notificationQuadStream)
+    
+            if(!await validate(notificationDataset, shapeDataset)) {
+              // The notification matches the given filter
+              this.validatedNotification(notificationId, quads, filter.name)   
             }
           }
         }
       }
-
       processedIds = processedIds.concat(newContentIds)
       this.emit('readable')
     })
     // Subscribe the tracker
     tracker.subscribe(this.params.inbox);
+  }
+
+  private async validatedNotification(notificationId: string, quads: RDF.Quad[], filterName: string) {
+    this.values.push( {id: notificationId, quads: quads.slice(), filterName: filterName} );
+      // Handle flags
+      if (this.params.notify) {
+        notifySystem(quads, this.params.systemNotificationFormat, filterName)
+      }
+      if (this.params.delete) {
+        try {
+          await deleteFile(this.auth, notificationId)
+          winston.log('verbose', 'Deleted notification: ' + notificationId)
+        } catch (e) {
+          winston.log('error', 'Failed to delete notification: ' + notificationId)
+        }
+      }
   }
 
 }
