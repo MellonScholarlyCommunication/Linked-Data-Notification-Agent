@@ -84,7 +84,7 @@ export interface Filter {
 }
 
 
-export interface InboxNotification {id: string; quads: RDF.Quad[]; filterName: string}
+export interface InboxNotification {id: string; quads: RDF.Quad[]; filterName: string, date?: Date}
 
 export const streamToQuads = (stream : RDF.Stream) : Promise<RDF.Quad[]> => {
   return new Promise((resolve, reject) => { 
@@ -121,7 +121,7 @@ export function toReadableStream(body: ReadableStream | null): NodeJS.ReadableSt
  * @param quads The notification quads
  * @param formattingFunction A formatting function to format the quads into a notification
  */
-export async function notifySystem(quads: RDF.Quad[], formattingFunction?: Function, filterName?: string) {
+export async function notifySystem(quads: RDF.Quad[], formattingFunction?: Function, filterName?: string, date?: Date) {
   const f = async function (quads: RDF.Quad[]) {
     let sender = null;
     let contents = null;
@@ -137,6 +137,9 @@ export async function notifySystem(quads: RDF.Quad[], formattingFunction?: Funct
     
     if (!contents) {
       contents = await quadsToString(quads, 'text/turtle');
+    }date
+    if (date) {
+      contents = `Received: ${date}\n` + contents
     }
     if (filterName) {
       contents = `Filter: ${filterName}\n` + contents

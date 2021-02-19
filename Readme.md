@@ -133,6 +133,16 @@ An iterator is returned containing the notifications present in the inbox.
 In the case watch mode is set on the CLI, or the watch function is called in javascript, the inbox will be continuously monitored by the agent using a polling or websocket approach for new notifications. 
 In javascript, this will return an asynciterator.
 
+Both iterators return results in the following format:
+```
+{
+  id: string, // the identifier of the notification 
+  quads: RDF.Quad[], // the quads of the notification
+  filterName: string, // the name of the matched filter
+}
+```
+In case no filters were used, 
+
 #### CLI
 ```
 solid-notifications [options] list [list-options] [url]
@@ -145,6 +155,7 @@ const options = {...}
 const iterator = agent.listNotifications(options)
 // watching the inbox continuously
 const asynciterator = agent.watchNotifications(options)
+
 ```
 #### Options
 ```
@@ -153,8 +164,7 @@ const asynciterator = agent.watchNotifications(options)
   format?: string,                // The format in which notifications are emitted
   delete?:boolean,                // Notifications are deleted after listing
   watch?: boolean,                // Watch mode (currently only for CLI)
-  filters?: any[],                // SAHCL shape files on which the notifications are evaluated
-                                  // Only matching notifications are returned
+  filters?: any[],                // An object implementing the Filter interface. 
 }
 ```
 All the CLI option flags can be found here:
@@ -162,6 +172,17 @@ All the CLI option flags can be found here:
 solid-notifications list --help
 ```
 
+Filters:
+
+The passed filters are required to implement the Filter interface
+```
+{
+  name: string,
+  shape?: string,
+  shapeFileURI?: string,
+}
+```
+The returned notifications will return the names of the filters they match.
 
 
 

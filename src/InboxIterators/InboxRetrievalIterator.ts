@@ -4,6 +4,8 @@ import { getDataset, getResourceAsDataset } from '../Retrieval/retrieval';
 import { validate } from "../Validation/Validation";
 import { InboxNotification, notifySystem, DEFAULTFILTERNAME, Filter } from '../Utils/util';
 import winston from "winston";
+import * as N3 from 'n3';
+import ns from "../NameSpaces";
 
 const streamifyArray = require('streamify-array');
 
@@ -13,9 +15,14 @@ export default async function getInboxIterator(auth: any, params: {webId?: strin
     const notifications : any[] = []
     for (let id of notificationIds) {
       const quads = await getQuadArrayFromFile(auth, id)
+      const inboxStore = new N3.Store(quads.slice())
+      const modifieds = inboxStore.getQuads(id, ns.dct('modified'), null, null)
+      const date = modifieds && modifieds.length !== 0 
+                              ? new Date(modifieds[0].object.value)
+                              : undefined
 
       if (!params.filters || params.filters.length === 0) {
-        const inboxNotification : InboxNotification = {id, quads, filterName: DEFAULTFILTERNAME};
+        const inboxNotification : InboxNotification = {id, quads, filterName: DEFAULTFILTERNAME, date};
         notifications.push(inboxNotification);
       } else {
         for (let filter of params.filters || []) {
@@ -31,12 +38,12 @@ export default async function getInboxIterator(auth: any, params: {webId?: strin
           if(!await validate(notificationDataset, shapeDataset)) {
             // The notification matches the given filter
             
-            const inboxNotification : InboxNotification = {id, quads, filterName: filter.name};
+            const inboxNotification : InboxNotification = {id, quads, filterName: filter.name, date};
             notifications.push(inboxNotification);
             
             // Handle flags
             if (params.notify) {
-              notifySystem(inboxNotification.quads, params.systemNotificationFormat)
+              notifySystem(inboxNotification.quads, params.systemNotificationFormat, filter.name, date)
             }
             if (params.delete) {
               try {

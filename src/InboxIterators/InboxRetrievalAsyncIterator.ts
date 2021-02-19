@@ -41,15 +41,19 @@ export class InboxRetrievalAsyncIterator extends AsyncIterator<InboxNotification
       // Inbox is updated
       const inboxStore = await getStoreFromFile(this.auth, this.params.inbox);
       const contentIds = inboxStore.getQuads(this.params.inbox, ns.ldp('contains'), null, null).map(quad => quad.object.id)
+
       // Get the new notification(s)
       const newContentIds = contentIds.filter(id => processedIds.indexOf(id) === -1)
 
 
       for (let notificationId of newContentIds) {
         const quads = await getQuadArrayFromFile(this.auth, notificationId)
-          
+        const modifieds = inboxStore.getQuads(notificationId, ns.dct('modified'), null, null)
+        const date = modifieds && modifieds.length !== 0 
+                                ? new Date(modifieds[0].object.value)
+                                : undefined
         if (!this.params.filters || this.params.filters.length === 0) {
-          this.validatedNotification(notificationId, quads, DEFAULTFILTERNAME)   
+          this.validatedNotification(notificationId, quads, DEFAULTFILTERNAME, date)   
         } else {
           for (let filter of this.params.filters) {
             if (!filter.name) throw new Error('No name parameter set for used filter.')
@@ -63,7 +67,7 @@ export class InboxRetrievalAsyncIterator extends AsyncIterator<InboxNotification
     
             if(!await validate(notificationDataset, shapeDataset)) {
               // The notification matches the given filter
-              this.validatedNotification(notificationId, quads, filter.name)   
+              this.validatedNotification(notificationId, quads, filter.name, date)   
             }
           }
         }
@@ -75,11 +79,11 @@ export class InboxRetrievalAsyncIterator extends AsyncIterator<InboxNotification
     tracker.subscribe(this.params.inbox);
   }
 
-  private async validatedNotification(notificationId: string, quads: RDF.Quad[], filterName: string) {
-    this.values.push( {id: notificationId, quads: quads.slice(), filterName: filterName} );
+  private async validatedNotification(notificationId: string, quads: RDF.Quad[], filterName: string, date?: Date) {
+    this.values.push( {id: notificationId, quads: quads.slice(), filterName: filterName, date: date} );
       // Handle flags
       if (this.params.notify) {
-        notifySystem(quads, this.params.systemNotificationFormat, filterName)
+        notifySystem(quads, this.params.systemNotificationFormat, filterName, date)
       }
       if (this.params.delete) {
         try {
