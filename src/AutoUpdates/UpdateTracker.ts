@@ -14,6 +14,8 @@ import {
 import {
   WebSocketTracker
 } from './WebSocketTracker';
+import winston from "winston";
+import { Level } from "../Utils/Logger";
 
 // Wildcard for tracking all resources
 
@@ -90,7 +92,7 @@ async function getWebSocketUrl(auth: any, url: string) {
   const response = await auth.fetch(url);
   const webSocketUrl = response.headers.get('Updates-Via');
   if (!webSocketUrl)
-    throw new Error(`No WebSocket found for ${url}`);
+    winston.log('verbose', `No WebSocket found for ${url}`)
   return webSocketUrl;
 }
 
