@@ -9,12 +9,6 @@ import { InboxRetrievalAsyncIterator } from './InboxIterators/InboxRetrievalAsyn
 import { discoverInbox, getInbox } from './Retrieval/inbox_retrieval';
 import getInboxIterator from './InboxIterators/InboxRetrievalIterator';
 
-const streamifyArray = require('streamify-array');
-
-
-
-
-
 export class NotificationHandler {
   config: Configuration;
   auth?: any;

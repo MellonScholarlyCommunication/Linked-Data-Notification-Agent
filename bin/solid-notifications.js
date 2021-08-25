@@ -3,6 +3,7 @@ const program = require('commander');
 const { readFileSync } = require("fs");
 const { option } = require("commander");
 const { quadsToString } = require("../dist/Utils/util.js");
+const getResourceAsString = require("@dexagod/rdf-retrieval").getResourceAsString
 
 function mapFlags (options) {
   // Fetch the config file and merge with the passed options
@@ -42,11 +43,13 @@ program
   .action(async (receiver, notification, mapping, flags) => {    
     // program.opts() contains the global flags, that are equal to the constructor options for the notification handler.9
     const nh = new NotificationHandler(mapFlags(program.opts()))
+    notification = flags.file 
+      ? getResourceAsString(notification)
+      : notification
     const options = {
       from: flags.sender,
       to: [receiver],
       notification,
-      isFile: flags.file,
       isTemplate: flags.template,
       notification_mapping: mapping,
       cc: flags.cc && (Array.isArray(flags.cc) ? flags.cc : [flags.cc]),
