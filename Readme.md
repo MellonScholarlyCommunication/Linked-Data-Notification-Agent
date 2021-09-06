@@ -46,11 +46,9 @@ const agent = new NotificationAgent(config)
 ### Configuration options
 ```
 {
-  auth?: any,         // Only for javascript! A custom auth object can be passed.
-  username?: string,  // Solid username. Used for authentication in node.
-  password?: string,  // Solid password. Used for authentication in node.
-  idp?: string,       // Solid Identity Provider. Used for authentication in node and browser.
-  popup?: string,     // The URL of the login popup. Used for authentication in browser.
+  auth?: any,         // The application should authenticate itself to an identity provider.
+  idp?: string,       // The Identity Provider id.
+  port?: string,      // The port on which the solid authentication service is hosted locally.
   sender?: string,    // The default sender added to notifications.
   format?: string,    // The format of all output data. Must be an RDF format.
   verbose?: boolean,  // Write logs to command line.
@@ -59,39 +57,23 @@ const agent = new NotificationAgent(config)
 
 ## Authentication
 Commands requiring the client to retrieve data from the inbox, may require the client to authenticate.
-Authentication is done using [solid-auth-cli](https://github.com/jeff-zucker/solid-auth-cli) in Node, and using [solid-auth-client](https://github.com/solid/solid-auth-client) in the browser.
+In Node and in the browser, a custom fetch must be passed that has all required authentication headers set.
+These can be found on the session object of most authentication libraries for Solid.
+
+Authentication on the CLI is done using the new [solid-client-authn](https://github.com/inrupt/solid-client-authn-js) library.
 ### CLI
 The login information can be passed using the configuration file, or using the relevant option flags.
-Authentication will automatically be attempted for commands requiring authentication.
+Authentication must be manually turned on through the CLI flags.
 ### Javascript
 The login information can be passed using the configuration file, or in the options of the login function.
 ```
-const NotificationAgent = require('@dexagod/ldn-agent')
-const agent = new NotificationAgent(config)
+let session ; // the session object returned by e.g. solid-auth-client
+let config ; // The configuration object
 
-// Node && Browser
-const options = { username, password, idp } 
-await agent.login(options)
+const Agent = require('ldn-agent').Agent
 
-// Browser
-// uri is the URI of the popup.
-loginPopup(uri)
-
-
-// Now the user is authenticated, and we can call functions requiring authentication.
-// In browser environments, authentication can be easily handled by passing a custom auth object that is already authenticated.
-// Else, The authentication control flow should not be awaited, but be handled using a better async approach (e.g. useEffect in React).
+let agent = new Agent(config, session.fetch)
 ```
-The used functions in the background are:
-
-login() - 
-[node](https://github.com/jeff-zucker/solid-auth-cli#login-idphttpsidpexamplecom-usernameyou-passwordhmm-) -
-[browser](https://github.com/solid/solid-auth-client#logging-in)
-
-loginPopup(uri) - 
-[browser](https://github.com/solid/solid-auth-client#logging-in)
-
-
 
 ## Features
 
@@ -160,7 +142,7 @@ const asynciterator = agent.watchNotifications(options)
 #### Options
 ```
 {
-  webId?: string,                 // The resource of which the inbox is used.
+  uri?: string,                 // The resource of which the inbox is used.
   format?: string,                // The format in which notifications are emitted
   delete?:boolean,                // Notifications are deleted after listing
   watch?: boolean,                // Watch mode (currently only for CLI)
@@ -201,7 +183,7 @@ agent.clearNotifications(options)
 #### Options
 ```
 {
-  webId?: string,                 // The resource of which the inbox is used.
+  uri?: string,                 // The resource of which the inbox is used.
 }
 ```
 All the CLI option flags can be found here:

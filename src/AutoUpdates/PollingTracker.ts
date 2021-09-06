@@ -3,16 +3,16 @@ import ns from '../NameSpaces';
 import { EventEmitter } from 'events';
 
 export class PollingTracker extends EventEmitter {
-  auth: any;
+  fetch: any;
   url: string;
   timeOut: number;
   interval : any = null;
 
   processedIds : string[] = []
   
-  constructor(auth: any, url: string, timeOut = 5000) {
+  constructor(fetch: any, url: string, timeOut = 5000) {
     super();
-    this.auth = auth;
+    this.fetch = fetch;
     this.url = url;
     this.timeOut = timeOut;
   }
@@ -30,7 +30,7 @@ export class PollingTracker extends EventEmitter {
   }
 
   private async evaluate () {
-    const quads = await getQuadArrayFromFile(this.auth, this.url);
+    const quads = await getQuadArrayFromFile(this.fetch, this.url);
     let updated = false;
     for (let quad of quads) {
       // Currently only checking contains as this is for notifications

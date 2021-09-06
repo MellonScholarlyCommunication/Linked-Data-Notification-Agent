@@ -6,11 +6,11 @@ import { emit } from "process";
 import { log, Level } from './Logger';
 
 export class Watcher extends EventEmitter {
-  auth: any;
+  fetch: any;
   interval: number;
-  constructor(auth:any, interval=2000) {
+  constructor(fetch:any, interval=2000) {
     super();
-    this.auth = auth;
+    this.fetch = fetch;
     this.interval = interval;
   }
 
@@ -24,7 +24,7 @@ export class Watcher extends EventEmitter {
   
     setInterval(async () => { 
       // HEAD request to get the timestamp of the previous change.
-      const response = await getFile(this.auth, id) 
+      const response = await getFile(this.fetch, id) 
       if (response.headers['Last-Modified']) {
         if (previousTimeStamp) {
           try {

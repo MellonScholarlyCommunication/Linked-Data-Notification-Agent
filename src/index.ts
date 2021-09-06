@@ -1,1 +1,1 @@
-export { NotificationHandler } from './NotificationHandler';
+export { Agent } from './NotificationAgent';

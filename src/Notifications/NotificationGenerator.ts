@@ -1,75 +1,72 @@
-import { Configuration } from './../Utils/util';
-import { NotificationMetadata, streamToQuads, quadsToString } from '../Utils/util';
+import { NotificationData, streamToQuads, quadsToString } from '../Utils/util';
 import * as RDF from 'rdf-js';
 import * as df from '@rdfjs/data-model';
 import ns from '../NameSpaces';
-import SolidError from '../Utils/SolidError';
+import CustomError from '../Utils/CustomError';
 import rdfParser from 'rdf-parse';
 import { loadResourceText } from '../Utils/FileUtils';
 const streamifyString = require('streamify-string');
 
-const BASEIRI = "urn:Notification"
+const DEFAULTCONTENTTYPE = 'text/turtle'
 
-export default async function generateNotification(auth: any, config: Configuration, notificationData: NotificationMetadata) : Promise<string> {  
+export default async function generateNotification(fetch: any, data: NotificationData) : Promise<string> {  
   // Extract and parse the notification body
-  let notificationQuads = await parseNotificationBody(auth, notificationData); 
+  let notificationQuads = await parseNotificationBody(fetch, data); 
 
-  const sender = notificationData.from || config.sender
-  const senders = Array.isArray(sender) ? sender : [sender]
+  const sender = data.from
+  const senders = sender ? (Array.isArray(sender) ? sender : [sender]) : []
 
   // Add the from, to, cc and bcc fields 
   for (const id of senders || []) {
-    if (id) notificationQuads.push(df.quad(df.namedNode(BASEIRI), df.namedNode(ns.dct('creator')), df.namedNode(id)))
+    if (id) notificationQuads.push(df.quad(df.namedNode(''), df.namedNode(ns.dct('creator')), df.namedNode(id)))
   }
-  for (const id of notificationData.to || []) {
-    if (id) notificationQuads.push(df.quad(df.namedNode(BASEIRI), df.namedNode(ns.as('to')), df.namedNode(id)))
+  for (const id of data.to || []) {
+    if (id) notificationQuads.push(df.quad(df.namedNode(''), df.namedNode(ns.as('to')), df.namedNode(id)))
   }
-  for (const id of notificationData.cc || []) {
-    if (id) notificationQuads.push(df.quad(df.namedNode(BASEIRI), df.namedNode(ns.as('cc')), df.namedNode(id)))
+  for (const id of data.cc || []) {
+    if (id) notificationQuads.push(df.quad(df.namedNode(''), df.namedNode(ns.as('cc')), df.namedNode(id)))
   }
-  for (const id of notificationData.bcc || []) {
-    if (id) notificationQuads.push(df.quad(df.namedNode(BASEIRI), df.namedNode(ns.as('bcc')), df.namedNode(id)))
+  for (const id of data.bcc || []) {
+    if (id) notificationQuads.push(df.quad(df.namedNode(''), df.namedNode(ns.as('bcc')), df.namedNode(id)))
   }
 
-  const contentType = notificationData.contentTypeOutput
+  const contentType = data.contentType
   try {
     return quadsToString(notificationQuads, contentType)
-  } catch (e) {
-    throw new SolidError(`Error serializing notification body\n${e.message}`, 'Serialization')
+  } catch (e: any) {
+    throw new CustomError(`Error serializing notification body\n${e.message}`, 'Serialization')
   }
 } 
 
-async function parseNotificationBody(auth: any, notificationData: NotificationMetadata) : Promise<Array<any>> {
-  let notificationString: string;
-
-  // Try parsing the notification parameter, retrieving the notification file, or retrieving and completing the passed template.
+async function parseNotificationBody(fetch: any, data: NotificationData) : Promise<Array<any>> {
+  // Try parsing the notificparseNotificationBodyation parameter, retrieving the notification file, or retrieving and completing the passed template.
   try {
-    if (notificationData.notification) {
-      notificationString = notificationData.notification;
-    } else if (notificationData.notification_file) {
-      notificationString = await loadResourceText(auth, notificationData.notification_file)
-    } else if (notificationData.notification_template && notificationData.notification_mapping) {
-      throw new Error('Templates have not yet been implemented in this version.')
+    let notificationString : string;
+    if (data.filePath) {
+      notificationString = await loadResourceText(fetch, data.filePath)
+    } else if (data.body) {
+      notificationString = data.body
     } else {
-      throw new SolidError('No valid notification was provided. Please use --help to find the available methods to pass a notification to the program.');
+      throw new CustomError('No notification body or file was passed.');
     }
     
     // Convert the notification into RDF quads. In the case of a plain text notification, wrap it as an activitystream2.0 content.
-    if (notificationData.contentType === "text/plain") {
+    if (data.inputContentType === "text/plain") {
       return new Promise((resolve, reject) => { resolve(buildNotificationWithText(notificationString)) })
     } else {
       const textStream = streamifyString(notificationString);
-      const parsedStream = rdfParser.parse(textStream, {contentType: notificationData.contentType, baseIRI: BASEIRI})
+      const parsedStream = rdfParser.parse(textStream, {contentType: data.contentType || DEFAULTCONTENTTYPE})
       return streamToQuads(parsedStream);
     }
-  } catch (e) {
-    throw new SolidError(`Could not parse the notification.\n${e}`, e.name || "Notification parsing")
+  } catch (e: any) {
+    throw new CustomError(`Could not parse the notification.\n${e}`, e.name || "Notification parsing")
   }
 }
 
 function buildNotificationWithText(text: string) : Array<any> {
   return ([
-    df.quad(df.namedNode(BASEIRI), df.namedNode(ns.as('content')), df.literal(text, df.namedNode(ns.xsd('string'))))
+    df.quad(df.namedNode(''), df.namedNode(ns.rdf('type')), df.namedNode(ns.as('Note'))),
+    df.quad(df.namedNode(''), df.namedNode(ns.as('content')), df.literal(text, df.namedNode(ns.xsd('string')))),
   ])
 }
   

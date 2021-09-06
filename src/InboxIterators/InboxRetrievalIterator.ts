@@ -1,65 +1,105 @@
-import { fetchInboxNotifications } from "../Retrieval/inbox_retrieval";
-import { deleteFile, getQuadArrayFromFile } from "../Utils/FileUtils";
-import { getDataset, getResourceAsDataset } from '../Retrieval/retrieval';
-import { validate } from "../Validation/Validation";
-import { InboxNotification, notifySystem, DEFAULTFILTERNAME, Filter } from '../Utils/util';
+
+import { deleteFile } from "../Utils/FileUtils";
+import { InboxNotification, notifySystem, Filter, ListingOptions } from '../Utils/util';
 import winston from "winston";
-import * as N3 from 'n3';
-import ns from "../NameSpaces";
+import { getNotificationContents, getNotificationsInfo, NotificationInfo } from '../Retrieval/inbox_retrieval';
+import { validateFilters } from "../Validation/Validation";
+import { AsyncIterator } from "asynciterator";
+import { UpdateTracker } from '../AutoUpdates/UpdateTracker';
+import CustomError from '../Utils/CustomError';
 
-const streamifyArray = require('streamify-array');
 
-export default async function getInboxIterator(auth: any, params: {webId?: string, inbox: string, systemNotificationFormat?: Function, watch?: boolean, delete?: boolean, notificationIds?: [], filters?: Filter[], notify?: boolean}) : Promise<Iterator<InboxNotification>>{
-    // Check if notifications are specified to be processed. If not, process over all notifications in the inbox.
-    const notificationIds = (await fetchInboxNotifications(auth, params.inbox))?.notifications
-    const notifications : any[] = []
-    for (let id of notificationIds) {
-      const quads = await getQuadArrayFromFile(auth, id)
-      const inboxStore = new N3.Store(quads.slice())
-      const modifieds = inboxStore.getQuads(id, ns.dct('modified'), null, null)
-      const date = modifieds && modifieds.length !== 0 
-                              ? new Date(modifieds[0].object.value)
-                              : undefined
 
-      if (!params.filters || params.filters.length === 0) {
-        const inboxNotification : InboxNotification = {id, quads, filterName: DEFAULTFILTERNAME, date};
-        notifications.push(inboxNotification);
-      } else {
-        for (let filter of params.filters || []) {
-          if (!filter.name) throw new Error('No name parameter set for used filter.')
-          if (filter.shape) throw new Error('Shapes are currently not yet supported.')
-          if (!filter.shapeFileURI) throw new Error('No shapeFileURI parameter set for filter.')
+export class InboxRetrievalAsyncIterator extends AsyncIterator<InboxNotification> {
 
-          // These have to be done every time, as the stream is consumed. (Is the dataset consumed? TODO:: check)
-          const shapeDataset = await getResourceAsDataset(auth, filter.shapeFileURI)
-          const quadStream = await streamifyArray(quads.slice()); // Slicing is required, as else the array is consumed when running in the browser (but not when running in node?)
-          const notificationDataset = await getDataset(quadStream)
+  public values: InboxNotification[];
+  private options: ListingOptions;
+  private fetch: any;
+  private inbox: string;
+  
+  constructor(fetch: any, options: ListingOptions) {
+    super();
+    this.options = options;
 
-          if(!await validate(notificationDataset, shapeDataset)) {
-            // The notification matches the given filter
-            
-            const inboxNotification : InboxNotification = {id, quads, filterName: filter.name, date};
-            notifications.push(inboxNotification);
-            
-            // Handle flags
-            if (params.notify) {
-              notifySystem(inboxNotification.quads, params.systemNotificationFormat, filter.name, date)
-            }
-            if (params.delete) {
-              try {
-                await deleteFile(auth, inboxNotification.id)
-                winston.log('verbose', 'Deleted notification: ' + inboxNotification.id)
-              } catch (e) {
-                winston.log('error', 'Failed to delete notification: ' + inboxNotification.id)
-              }
-            }
-          }
+    this.fetch = fetch;
+    this.values = new Array();
+    if (!options.inbox) throw new CustomError("No inbox was found");
+    this.inbox = options.inbox
+
+    this.trackFolder();
+  }
+  
+  read(): InboxNotification | null{
+    if (this.closed) return null;
+    return this.values.shift() || null;  
+  }
+
+  private async trackFolder() {
+    let processedIds : string[] = this.options.ignore || []
+
+    // Create the tracker
+    const tracker = new UpdateTracker(this.fetch)
+    tracker.on('update', async (e) => {
+      if (!this.options.inbox) throw new CustomError("No valid uri or inbox provided.");
+
+      const notificationsInfo = await getNotificationsInfo(fetch, this.options)
+  
+      for (let info of notificationsInfo) {
+        let contents = await processNotification(fetch, info, this.options)
+        if (contents) {
+          processedIds.push(contents.id)
+          this.values.push( contents );
         }
       }
+      
+      this.emit('readable')
+    })
+    // Subscribe the tracker
+    tracker.subscribe(this.inbox);
+  }
+}
+
+export async function getInboxIterator(fetch: any, options: ListingOptions) : Promise<Iterator<InboxNotification>>{
+
+    // Retrieve notification Ids
+    const notificationsInfo = await getNotificationsInfo(fetch, options)
+    const notifications : Array<InboxNotification> = []
+
+    for (let info of notificationsInfo) {
+      let contents = await processNotification(fetch, info, options)
+      if (contents) notifications.push(contents)
     }
     return makeIterator<InboxNotification>(notifications)
 }
 
 function makeIterator<T>(array: Array<T>) {
   return array[Symbol.iterator]();
+}
+
+async function processNotification(fetch: any, info: NotificationInfo, options: ListingOptions, ignore?: string[]) : Promise<InboxNotification | null> {
+  if (options.ignore && options.ignore.indexOf(info.id) !== -1) return null;
+  if (ignore && ignore.indexOf(info.id) !== -1) return null;
+
+  let notifContents = await getNotificationContents(fetch, info)
+  let validatedFilters : Filter[] = [];
+  if (options.filters && options.filters.length !== 0) {
+    validatedFilters = await validateFilters(notifContents.quads.slice(), options.filters || [])
+    if (!validatedFilters || validatedFilters.length === 0)
+      return null;
+  }
+
+  // Handle flags
+  if (options.notify) {
+    notifySystem(notifContents.quads, validatedFilters, notifContents.last_modified)
+  }
+  if (options.delete) {
+    try {
+      await deleteFile(fetch, notifContents.id)
+      winston.log('verbose', 'Deleted notification: ' + notifContents.id)
+    } catch (e) {
+      winston.log('error', 'Failed to delete notification: ' + notifContents.id)
+    }
+  }
+  
+  return ( {id: notifContents.id, last_modified: notifContents.last_modified, quads: notifContents.quads, validated_for: validatedFilters} ); 
 }

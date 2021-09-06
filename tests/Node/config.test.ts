@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import 'mocha'
-import { NotificationHandler } from '../../src/index';
+import { Agent } from '../../src/index';
 import { readFileSync } from 'fs';
 
 
@@ -10,9 +10,9 @@ describe('Testing config file loading', () => {
 
     const config = JSON.parse(readFileSync(configPath, {encoding: 'utf-8'}))
 
-    let handler = new NotificationHandler(config);
-    expect(!!handler.auth).to.not.be.null;
-    expect(!!handler.auth).to.not.be.undefined;
+    let handler = new Agent(config);
+    expect(!!handler.fetch).to.not.be.null;
+    expect(!!handler.fetch).to.not.be.undefined;
     expect(handler.config).to.deep.equal({
       "username": "notificationtestpod",
       "password": "notificationtestpod",

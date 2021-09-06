@@ -1,13 +1,9 @@
 // Based on:
 // https://github.com/solid/react-components/blob/edc5f9295fbaf2ff88212303e8f6aa5ac7ee0164/src/UpdateTracker.js
 
-import ns from "../NameSpaces";
 import {
   EventEmitter
 } from "events";
-import {
-  Store
-} from 'n3';
 import {
   PollingTracker
 } from './PollingTracker';
@@ -15,23 +11,22 @@ import {
   WebSocketTracker
 } from './WebSocketTracker';
 import winston from "winston";
-import { Level } from "../Utils/Logger";
 
 // Wildcard for tracking all resources
 
 export class UpdateTracker extends EventEmitter {
-  private auth: any;
+  private fetch: any;
   private trackers = new Map < string, PollingTracker | WebSocketTracker > ();
   private reconnectionAttempts = 0;
   private reconnectionDelay = 1000;
 
-  constructor(auth: any) {
+  constructor(fetch: any) {
     super()
-    this.auth = auth;
+    this.fetch = fetch;
   }  
 
   async track(url: string) {
-    const tracker = await createTracker(this.auth, url)
+    const tracker = await createTracker(this.fetch, url)
     tracker.on('update', () => {
       const update = {
         timestamp: new Date(),
@@ -88,8 +83,8 @@ export class UpdateTracker extends EventEmitter {
   }
 }
 
-async function getWebSocketUrl(auth: any, url: string) {
-  const response = await auth.fetch(url);
+async function getWebSocketUrl(fetch: any, url: string) {
+  const response = await fetch(url);
   const webSocketUrl = response.headers.get('Updates-Via');
   if (!webSocketUrl)
     winston.log('verbose', `No WebSocket found for ${url}`)
@@ -97,11 +92,11 @@ async function getWebSocketUrl(auth: any, url: string) {
 }
 
 
-async function createTracker(auth: any, url: string): Promise < PollingTracker | WebSocketTracker > {
-  const webSocketURL = await getWebSocketUrl(auth, url);
+async function createTracker(fetch: any, url: string): Promise < PollingTracker | WebSocketTracker > {
+  const webSocketURL = await getWebSocketUrl(fetch, url);
   if (webSocketURL) {
-    return new WebSocketTracker(auth, url, webSocketURL)
+    return new WebSocketTracker(fetch, url, webSocketURL)
   } else {
-    return new PollingTracker(auth, url)
+    return new PollingTracker(fetch, url)
   }
 }

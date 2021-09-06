@@ -1,59 +1,12 @@
 
-import SolidError from './SolidError';
+import CustomError from './CustomError';
 import ns from '../NameSpaces';
 import * as RDF from 'rdf-js';
 import rdfSerializer from 'rdf-serialize';
 import { SystemNotificationHander } from '../SystemNotifications/SystemNotificationhandler';
 
 const streamifyArray = require('streamify-array');
-const streamifyString = require('streamify-string');
 const stringifyStream = require('stream-to-string');
-
-export const DEFAULTFILTERNAME = 'default'
-
-export interface LoginOptions {
-  username?: string;
-  password?: string;
-  idp?: string;
-}
-
-export interface NotificationHandlerOptions {
-  config?: string,
-  username?: string,
-  password?: string,
-  idp?: string,
-  cli?: boolean,
-  verbose?: boolean,
-  format?: string,
-  watch?: boolean,
-  auth?: any
-}
-
-export interface ConfigFileOptions {
-  username?: string,
-  password?: string,
-  idp?: string,
-  sender?: string,
-  popup?: string,
-  verbose?: boolean,
-  notify?: boolean,
-  format?: string,
-}
-
-export interface Configuration {
-  config?: string,
-  username?: string,
-  password?: string,
-  idp?: string,
-  sender?: string,
-  popup?: string,
-  cli?: boolean,
-  verbose?: boolean,
-  notify?: boolean,
-  format?: string,
-  watch?: boolean,
-  auth?: any,
-}
 
 export interface Notification {
   "@context": any,
@@ -63,18 +16,25 @@ export interface Notification {
   target?: any,
 }
 
-export interface NotificationMetadata {
+export interface NotificationData {
   context?: any;
+  body: string,
+  filePath: string,
   from: string[],
   to: string[],
   cc?: string[],
   bcc?: string[],
+  inputContentType: string,
   contentType: string,
-  contentTypeOutput: string,
-  notification?: any,
-  notification_template?: any,
-  notification_mapping?: any,
-  notification_file?: any,
+}
+
+export interface ListingOptions {
+  uri?: string, 
+  inbox?: string, 
+  delete?: boolean, 
+  notify?: boolean,
+  ignore?: string[],
+  filters: Filter[],
 }
 
 export interface Filter {
@@ -83,15 +43,14 @@ export interface Filter {
   shapeFileURI?: string,
 }
 
-
-export interface InboxNotification {id: string; quads: RDF.Quad[]; filterName: string, date?: Date}
+export interface InboxNotification {id: string; quads: RDF.Quad[]; last_modified?: Date, validated_for?: Filter[]}
 
 export const streamToQuads = (stream : RDF.Stream) : Promise<RDF.Quad[]> => {
   return new Promise((resolve, reject) => { 
     const quads : RDF.Quad[] = []
     stream
     .on('data', (quad) => {quads.push(quad)})
-    .on('error', (error) => reject(new SolidError(`Error parsing notification body.\n${error.message}`, "Notification parsing")))
+    .on('error', (error) => reject(new CustomError(`Error parsing notification body.\n${error.message}`, "Notification parsing")))
     .on('end', () => resolve(quads));
   })
 }
@@ -121,7 +80,7 @@ export function toReadableStream(body: ReadableStream | null): NodeJS.ReadableSt
  * @param quads The notification quads
  * @param formattingFunction A formatting function to format the quads into a notification
  */
-export async function notifySystem(quads: RDF.Quad[], formattingFunction?: Function, filterName?: string, date?: Date) {
+export async function notifySystem(quads: RDF.Quad[], filters?: Filter[], date?: Date) {
   const f = async function (quads: RDF.Quad[]) {
     let sender = null;
     let contents = null;
@@ -141,8 +100,8 @@ export async function notifySystem(quads: RDF.Quad[], formattingFunction?: Funct
     if (date) {
       contents = `Received: ${date}\n` + contents
     }
-    if (filterName) {
-      contents = `Filter: ${filterName}\n` + contents
+    if (filters && filters.length) {
+      contents = `Filter: ${filters.map(f => f.name).join(', ')}\n` + contents
     }
     if (sender) {
       contents = `Sender: ${sender}\n` + contents
@@ -150,7 +109,7 @@ export async function notifySystem(quads: RDF.Quad[], formattingFunction?: Funct
     return contents
   }
   
-  const message = formattingFunction ? await formattingFunction(quads) : await f(quads)
+  const message = await f(quads)
 
   new SystemNotificationHander().notify({
     title: 'Solid notification',

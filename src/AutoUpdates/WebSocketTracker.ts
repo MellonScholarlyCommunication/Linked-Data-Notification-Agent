@@ -3,13 +3,13 @@ import { EventEmitter } from 'events';
 import * as winston from 'winston'
 
 export class WebSocketTracker extends EventEmitter{
-  auth: any;
+  fetch: any;
   url: string;
   socketURI: string;
   webSocket: WebSocket | undefined;
-  constructor(auth: any, url: string, socketURI: string) {
+  constructor(fetch: any, url: string, socketURI: string) {
     super();
-    this.auth = auth;
+    this.fetch = fetch;
     this.url = url;
     this.socketURI = socketURI;
   }

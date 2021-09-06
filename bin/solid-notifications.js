@@ -1,9 +1,10 @@
-const { NotificationHandler } = require("../dist/index.js")
+const { Agent } = require("../dist/index.js")
 const program = require('commander');
 const { readFileSync } = require("fs");
-const { option } = require("commander");
 const { quadsToString } = require("../dist/Utils/util.js");
 const getResourceAsString = require("@dexagod/rdf-retrieval").getResourceAsString
+const login = require('./solid-login')
+
 
 function mapFlags (options) {
   // Fetch the config file and merge with the passed options
@@ -22,8 +23,8 @@ program
   .name("solid-notifications")
   .version('0.0.1')
   .option('-c, --config <path>', 'Configuration file path')
-  .option('-u, --username <string>', 'Login username')
-  .option('-p, --password <string>', 'Login password')
+  .option('-A, --authenticated', 'Use Solid authentication (opens browser window to login from).')
+  .option('-p, --port <string>', 'The port on which the local browser window is opened to login to the Solid data pod')
   .option('-idp, --identity-provider <string>', 'Login identity provider')
   .option('-v, --verbose', 'Verbose')
 
@@ -41,8 +42,11 @@ program
   .option('--bcc [string...]', 'Blind carbon copy contacts to be added to notification.')
   .description('Send a notification to a receiver. The notification can be passed as a string / object, as a file, or as a template with a mapping to complete the template.')
   .action(async (receiver, notification, mapping, flags) => {    
-    // program.opts() contains the global flags, that are equal to the constructor options for the notification handler.9
-    const nh = new NotificationHandler(mapFlags(program.opts()))
+
+    let session = program.opts().authenticated ? await login(program.opts().idp, null, parseInt(program.opts().port) || 3001) : null
+    let fetchFunc = session && session.fetch ? session.fetch : null;
+    let config = mapFlags(program.opts());
+    const agent = new Agent(fetchFunc, config.verbose)
     notification = flags.file 
       ? getResourceAsString(notification)
       : notification
@@ -57,7 +61,7 @@ program
       contentType: flags.inputContentType,
       contentTypeOutput: flags.outputContentType,
     }
-    await nh.sendNotification(options)
+    await agent.send(options)
   })
 
 program
@@ -67,14 +71,21 @@ program
   Requires the user to be authenticated to be able to access the uri resource and associated inbox. \
   If no uri parameter is provided, the inbox of the profile associated with the webId will be used.')
   .action(async (uri, flags) => {
-    const nh = new NotificationHandler(mapFlags(program.opts()))
-    await nh.login()
-    const options = { webId: uri, ...flags }
-    await nh.clearNotifications(options)
+
+    let session = program.opts().authenticated ? await login(program.opts().idp, null, parseInt(program.opts().port) || 3001) : null
+    let fetchFunc = session && session.fetch ? session.fetch : null;
+
+    if (!uri) uri = session && session.info && session.info.webId
+    let config = mapFlags(program.opts());
+
+    const agent = new Agent(fetchFunc, config.verbose)
+    const options = { uri: uri, ...flags }
+    await agent.clear(options)
   })
 
 program
   .command('list [uri]')
+  .description('List all notifications present in the inbox linked by the uri. In case no URI is given, the webId of the active Solid session is used.')
   .option('-w, --watch', 'Enable watch mode.')
   .option('-f, --filter <filter...>', 'Only list notifications matching the given filters.')
   .option('-F, --format <format>', 'Format of the logged notifications. If no format is given, quads are returned joined by newlines.')
@@ -83,22 +94,28 @@ program
   
   .description('List the notifications in the resource inbox')
   .action(async (uri, flags) => {
-    const nh = new NotificationHandler(mapFlags(program.opts()))
-    await nh.login()
-    const options = { webId: uri, ...flags }
+
+    let session = program.opts().authenticated ? await login(program.opts().idp, null, parseInt(program.opts().port) || 3001) : null
+    let fetchFunc = session && session.fetch ? session.fetch : null;
+
+    if (!uri) uri = session && session.info && session.info.webId
+    let config = mapFlags(program.opts());
+    
+    const agent = new Agent(fetchFunc, config.verbose)
+    const options = { uri: uri, ...flags }
 
     if (flags.watch) {
       // Watch mode
-      const notificationIterator = await nh.watchNotifications({...options}) // Iterator< { id: string, quads: RDF.Quad[] } >
+      const notificationIterator = await agent.watch({...options}) // Iterator< { id: string, quads: RDF.Quad[] } >
       notificationIterator.on('readable', () => {
         let notification;
         while (notification = notificationIterator.read())
-          logNotification(notification, options.format)
+          log(notification, options.format)
       });
     } else {
-      const notificationIterator = await nh.fetchNotifications({...options}) // Iterator< { id: string, quads: RDF.Quad[] } >
+      const notificationIterator = await agent.list({...options}) // Iterator< { id: string, quads: RDF.Quad[] } >
       for (let notification of Array.from(notificationIterator)) {
-        logNotification(notification, options.format)
+        log(notification, options.format)
       }  
     }
   })
@@ -110,7 +127,7 @@ function fetchConfig(configPath) {
   return JSON.parse(readFileSync(configPath))
 }
 
-async function logNotification (notification, format) {
+async function log (notification, format) {
   const quads = notification.quads
   let notificationString;
   format = format || "text/turtle"
@@ -120,3 +137,4 @@ async function logNotification (notification, format) {
   console.log(notificationText)
   return notificationString
 }
+
